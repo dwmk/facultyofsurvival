@@ -1,7 +1,7 @@
 export class AudioEngine {
   private audioContext: AudioContext | null = null;
   private masterGain: GainNode | null = null;
-  private oscillators: OscillatorNode[] = [];
+  private audioSources: (OscillatorNode | AudioBufferSourceNode)[] = [];
   private isPlaying = false;
   private melodyIndex = 0;
   private bassIndex = 0;
@@ -90,14 +90,14 @@ export class AudioEngine {
       this.drumIntervalId = null;
     }
 
-    this.oscillators.forEach(osc => {
+    this.audioSources.forEach(source => {
       try {
-        osc.stop();
+        source.stop();
       } catch (e) {
-        // Oscillator already stopped
+        // Source already stopped or invalid
       }
     });
-    this.oscillators = [];
+    this.audioSources = [];
   }
 
   // Stop ALL audio (background + aura)
@@ -110,15 +110,15 @@ export class AudioEngine {
     }
     this.isAuraFarming = false;
 
-    // Double-check oscillators (in case aura added any)
-    this.oscillators.forEach(osc => {
+    // Double-check sources (in case aura added any)
+    this.audioSources.forEach(source => {
       try {
-        osc.stop();
+        source.stop();
       } catch (e) {
-        // Oscillator already stopped
+        // Source already stopped or invalid
       }
     });
-    this.oscillators = [];
+    this.audioSources = [];
   }
 
   private playMelodyNote(): void {
@@ -142,7 +142,7 @@ export class AudioEngine {
     osc.start();
     osc.stop(this.audioContext.currentTime + 0.25);
 
-    this.oscillators.push(osc);
+    this.audioSources.push(osc);
     this.melodyIndex++;
 
     if (this.melodyIndex >= this.currentMelody.length * 2) {
@@ -184,7 +184,7 @@ export class AudioEngine {
     osc.start();
     osc.stop(this.audioContext.currentTime + 0.5);
 
-    this.oscillators.push(osc);
+    this.audioSources.push(osc);
     this.bassIndex++;
   }
 
@@ -206,6 +206,8 @@ export class AudioEngine {
 
     osc.start();
     osc.stop(this.audioContext.currentTime + 0.5);
+
+    this.audioSources.push(osc);
   }
 
   private playSnare(): void {
@@ -231,6 +233,8 @@ export class AudioEngine {
 
     noise.start();
     noise.stop(this.audioContext.currentTime + 0.2);
+
+    this.audioSources.push(noise);
   }
 
   private playHat(): void {
@@ -265,6 +269,8 @@ export class AudioEngine {
 
     noise.start();
     noise.stop(this.audioContext.currentTime + 0.1);
+
+    this.audioSources.push(noise);
   }
 
   playCollectSound(): void {
@@ -285,6 +291,8 @@ export class AudioEngine {
 
     osc.start();
     osc.stop(this.audioContext.currentTime + 0.15);
+
+    this.audioSources.push(osc);
   }
 
   playHitSound(): void {
@@ -305,6 +313,8 @@ export class AudioEngine {
 
     osc.start();
     osc.stop(this.audioContext.currentTime + 0.2);
+
+    this.audioSources.push(osc);
   }
 
   // 🔥 Aura farming start
@@ -333,7 +343,7 @@ export class AudioEngine {
 
       osc.start(now);
       osc.stop(now + 2.5);
-      this.oscillators.push(osc); // Track for cleanup
+      this.audioSources.push(osc); // Track for cleanup
     });
 
     // Punch kick
@@ -350,7 +360,7 @@ export class AudioEngine {
     kickGain.connect(this.masterGain!);
     kick.start(now);
     kick.stop(now + 0.5);
-    this.oscillators.push(kick); // Track for cleanup
+    this.audioSources.push(kick); // Track for cleanup
 
     // Start looping boss theme after intro
     this.auraIntervalId = window.setInterval(() => this.playAuraFarmingLoop(), 400);
@@ -375,7 +385,7 @@ export class AudioEngine {
     bassGain.connect(this.masterGain!);
     bass.start(now);
     bass.stop(now + 0.35);
-    this.oscillators.push(bass); // Track for cleanup
+    this.audioSources.push(bass); // Track for cleanup
 
     // Snare-like noise
     const bufferSize = this.audioContext.sampleRate * 0.1;
@@ -396,6 +406,7 @@ export class AudioEngine {
     noiseGain.connect(this.masterGain!);
     noise.start(now);
     noise.stop(now + 0.1);
+    this.audioSources.push(noise); // Track for cleanup
   }
 
   // ❌ End aura farming, resume normal background
