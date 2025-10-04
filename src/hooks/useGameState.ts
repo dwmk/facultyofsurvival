@@ -104,6 +104,7 @@ export const useGameState = () => {
     setGameOver(false);
     setGameOverReason('');
     setSurvivalTime(0);
+    keysPressed.current.clear();
     lastDamageTime.current = 0;
     lastEgoDecayTime.current = Date.now();
     animationFrame.current = 0;
