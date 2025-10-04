@@ -3,10 +3,11 @@ export class AudioEngine {
   private masterGain: GainNode | null = null;
   private audioSources: (OscillatorNode | AudioBufferSourceNode)[] = [];
   private isPlaying = false;
+  private backgroundTick = 0; // Unified tick for background
   private melodyIndex = 0;
   private bassIndex = 0;
-  private melodyIntervalId: number | null = null;
-  private bassIntervalId: number | null = null;
+  private drumIndex = 0;
+  private backgroundIntervalId: number | null = null; // Single ID for all background
   private auraIntervalId: number | null = null;
   private isAuraFarming = false;
 
@@ -24,9 +25,6 @@ export class AudioEngine {
     snare: [0, 0, 1, 0, 0, 0, 1, 0],  // on 2 & 4
     hat:   [1, 1, 1, 1, 1, 1, 1, 1],  // every beat
   };
-
-  private drumIndex = 0;
-  private drumIntervalId: number | null = null;
 
   private bassPatterns = [
     [0, 0, 4, 4, 0, 0, 4, 4],
@@ -48,47 +46,63 @@ export class AudioEngine {
       this.currentMelody = this.melodyPatterns[Math.floor(Math.random() * this.melodyPatterns.length)];
       this.currentBass = this.bassPatterns[Math.floor(Math.random() * this.bassPatterns.length)];
     }
-    // Reset aura state on init
+    // Reset aura and background state on init
     this.auraIntervalId = null;
+    this.backgroundIntervalId = null;
     this.isAuraFarming = false;
+    this.backgroundTick = 0;
+    this.melodyIndex = 0;
+    this.bassIndex = 0;
+    this.drumIndex = 0;
   }
 
   start(): void {
     if (this.isPlaying || !this.audioContext || !this.masterGain) return;
+    this.startDefaultBackground();
+  }
+
+  // Unified start for default background music
+  private startDefaultBackground(): void {
+    if (this.backgroundIntervalId || !this.audioContext || !this.masterGain) return;
 
     this.isPlaying = true;
+    this.backgroundTick = 0;
     this.melodyIndex = 0;
     this.bassIndex = 0;
     this.drumIndex = 0;
 
-    this.playMelodyNote();
-    this.melodyIntervalId = window.setInterval(() => this.playMelodyNote(), 300);
+    // Single master tick at 150ms (drum rate); others derive from tick count
+    this.backgroundIntervalId = window.setInterval(() => {
+      this.backgroundTick++;
 
-    this.playBassNote();
-    this.bassIntervalId = window.setInterval(() => this.playBassNote(), 600);
+      // Drums: Every tick (150ms)
+      this.playDrumBeat();
 
-    this.playDrumBeat();
-    this.drumIntervalId = window.setInterval(() => this.playDrumBeat(), 150); // fast ticks
+      // Melody: Every 2 ticks (300ms)
+      if (this.backgroundTick % 2 === 0) {
+        this.playMelodyNote();
+      }
+
+      // Bass: Every 4 ticks (600ms)
+      if (this.backgroundTick % 4 === 0) {
+        this.playBassNote();
+      }
+    }, 150);
   }
 
-  // Stop only background (melody, bass, drums)
-  stopBackground(): void {
+  // Unified stop for default background music
+  private stopDefaultBackground(): void {
     this.isPlaying = false;
 
-    if (this.melodyIntervalId) {
-      clearInterval(this.melodyIntervalId);
-      this.melodyIntervalId = null;
+    if (this.backgroundIntervalId) {
+      clearInterval(this.backgroundIntervalId);
+      this.backgroundIntervalId = null;
     }
 
-    if (this.bassIntervalId) {
-      clearInterval(this.bassIntervalId);
-      this.bassIntervalId = null;
-    }
-
-    if (this.drumIntervalId) {
-      clearInterval(this.drumIntervalId);
-      this.drumIntervalId = null;
-    }
+    this.backgroundTick = 0;
+    this.melodyIndex = 0;
+    this.bassIndex = 0;
+    this.drumIndex = 0;
 
     this.audioSources.forEach(source => {
       try {
@@ -100,9 +114,14 @@ export class AudioEngine {
     this.audioSources = [];
   }
 
+  // Stop only background (now unified)
+  stopBackground(): void {
+    this.stopDefaultBackground();
+  }
+
   // Stop ALL audio (background + aura)
   stopAll(): void {
-    this.stopBackground();
+    this.stopDefaultBackground();
 
     if (this.auraIntervalId) {
       clearInterval(this.auraIntervalId);
@@ -322,7 +341,7 @@ export class AudioEngine {
     if (!this.audioContext || !this.masterGain) return;
     if (this.isAuraFarming) return; // already playing
 
-    this.stopBackground(); // stop background only
+    this.stopBackground(); // stop background only (now unified)
     this.isAuraFarming = true;
 
     const now = this.audioContext.currentTime;
@@ -417,7 +436,7 @@ export class AudioEngine {
     }
     this.isAuraFarming = false;
 
-    // Resume background beats
+    // Resume background beats (unified)
     this.start();
   }
 }
