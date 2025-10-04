@@ -1,0 +1,180 @@
+import { useEffect, useRef } from 'react';
+import { Player, Student, Coin, TileType } from '../types/game';
+import { SpriteLoader } from '../utils/spriteLoader';
+
+interface GameCanvasProps {
+  gameMap: TileType[][];
+  player: Player | null;
+  students: Student[];
+  coins: Coin[];
+  tileSize: number;
+  mapSize: number;
+}
+
+const VIEWPORT_WIDTH = 800;
+const VIEWPORT_HEIGHT = 600;
+const SPRITE_URL = 'https://dwmk.github.io/delta-telekom/Assets/spritesheet.png';
+
+export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize }: GameCanvasProps) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const spriteLoaderRef = useRef<SpriteLoader>(new SpriteLoader());
+  const spritesLoadedRef = useRef(false);
+
+  useEffect(() => {
+    const loadSprites = async () => {
+      try {
+        await spriteLoaderRef.current.load(SPRITE_URL);
+        spritesLoadedRef.current = true;
+      } catch (error) {
+        console.error('Failed to load sprites:', error);
+      }
+    };
+
+    loadSprites();
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.imageSmoothingEnabled = false;
+
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+
+    if (!player) return;
+
+    const cameraX = player.position.x - VIEWPORT_WIDTH / 2;
+    const cameraY = player.position.y - VIEWPORT_HEIGHT / 2;
+
+    const startTileX = Math.max(0, Math.floor(cameraX / tileSize));
+    const endTileX = Math.min(mapSize, Math.ceil((cameraX + VIEWPORT_WIDTH) / tileSize));
+    const startTileY = Math.max(0, Math.floor(cameraY / tileSize));
+    const endTileY = Math.min(mapSize, Math.ceil((cameraY + VIEWPORT_HEIGHT) / tileSize));
+
+    for (let y = startTileY; y < endTileY; y++) {
+      for (let x = startTileX; x < endTileX; x++) {
+        const screenX = x * tileSize - cameraX;
+        const screenY = y * tileSize - cameraY;
+
+        if (gameMap[y]?.[x] === TileType.FLOOR) {
+          ctx.fillStyle = (x + y) % 2 === 0 ? '#e0e0e0' : '#ffffff';
+          ctx.fillRect(screenX, screenY, tileSize, tileSize);
+
+          ctx.strokeStyle = '#d0d0d0';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(screenX, screenY, tileSize, tileSize);
+        } else {
+          ctx.fillStyle = '#8B4513';
+          ctx.fillRect(screenX, screenY, tileSize, tileSize);
+
+          ctx.fillStyle = '#6B3410';
+          ctx.fillRect(screenX + 2, screenY + 2, tileSize - 4, tileSize - 4);
+        }
+      }
+    }
+
+    coins.forEach(coin => {
+      if (coin.collected) return;
+
+      const screenX = coin.position.x - cameraX;
+      const screenY = coin.position.y - cameraY;
+
+      if (screenX < -20 || screenX > VIEWPORT_WIDTH + 20 || screenY < -20 || screenY > VIEWPORT_HEIGHT + 20) {
+        return;
+      }
+
+      const radius = 8;
+      const time = Date.now() / 1000;
+      const bobOffset = Math.sin(time * 3) * 3;
+
+      ctx.fillStyle = '#FFD700';
+      ctx.beginPath();
+      ctx.arc(screenX, screenY + bobOffset, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#FFA500';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(screenX, screenY + bobOffset, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = '#FFE55C';
+      ctx.beginPath();
+      ctx.arc(screenX - 2, screenY + bobOffset - 2, radius / 3, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    if (spritesLoadedRef.current) {
+      students.forEach(student => {
+        const screenX = student.position.x - cameraX - 39;
+        const screenY = student.position.y - cameraY - 54;
+
+        if (screenX < -100 || screenX > VIEWPORT_WIDTH + 100 || screenY < -100 || screenY > VIEWPORT_HEIGHT + 100) {
+          return;
+        }
+
+        spriteLoaderRef.current.drawSprite(
+          ctx,
+          student.spriteIndex,
+          student.direction,
+          student.animationFrame,
+          student.isMoving,
+          screenX,
+          screenY,
+          1
+        );
+
+        if (student.chasing) {
+          const bubbleWidth = 120;
+          const bubbleHeight = 30;
+          const bubbleX = screenX + 39 - bubbleWidth / 2;
+          const bubbleY = screenY - 40;
+
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+          ctx.strokeStyle = '#333';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.roundRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight, 8);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+          ctx.beginPath();
+          ctx.moveTo(bubbleX + bubbleWidth / 2 - 5, bubbleY + bubbleHeight);
+          ctx.lineTo(bubbleX + bubbleWidth / 2, bubbleY + bubbleHeight + 8);
+          ctx.lineTo(bubbleX + bubbleWidth / 2 + 5, bubbleY + bubbleHeight);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#333';
+          ctx.font = '10px "Press Start 2P", monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const text = student.complaint.length > 18 ? student.complaint.substring(0, 16) + '...' : student.complaint;
+          ctx.fillText(text, bubbleX + bubbleWidth / 2, bubbleY + bubbleHeight / 2);
+        }
+      });
+
+      const playerScreenX = player.position.x - cameraX - 39;
+      const playerScreenY = player.position.y - cameraY - 54;
+
+      spriteLoaderRef.current.drawSprite(
+        ctx,
+        player.spriteIndex,
+        player.direction,
+        player.animationFrame,
+        player.isMoving,
+        playerScreenX,
+        playerScreenY,
+        1
+      );
+    }
+  }, [gameMap, player, students, coins, tileSize, mapSize]);
+
+  return <canvas ref={canvasRef} width={VIEWPORT_WIDTH} height={VIEWPORT_HEIGHT} className="border-4 border-gray-800 rounded" />;
+};
