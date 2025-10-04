@@ -284,99 +284,65 @@ private currentBass: number[] = [];
     osc.stop(this.audioContext.currentTime + 0.2);
   }
 
-  playAuraFarmingSound(): void {
+  // Big badass intro when aura farming starts
+playAuraFarmingIntro(): void {
   if (!this.audioContext || !this.masterGain) return;
 
   const now = this.audioContext.currentTime;
 
-  // --- EPIC DRONE (low growl) ---
-  const drone = this.audioContext.createOscillator();
-  drone.type = 'sawtooth';
-  drone.frequency.setValueAtTime(55, now); // Low A bass
-  const droneGain = this.audioContext.createGain();
-  droneGain.gain.setValueAtTime(0.3, now);
-  drone.connect(droneGain);
-  droneGain.connect(this.masterGain);
-  drone.start(now);
-  drone.stop(now + 8); // lasts 8 sec
-
-  // --- DRUM BEATS (kick + snare noise) ---
-  for (let i = 0; i < 16; i++) {
-    const t = now + i * 0.5; // half-beat spacing
-
-    // Kick
-    const kickOsc = this.audioContext.createOscillator();
-    kickOsc.type = 'sine';
-    kickOsc.frequency.setValueAtTime(120, t);
-    kickOsc.frequency.exponentialRampToValueAtTime(40, t + 0.3);
-
-    const kickGain = this.audioContext.createGain();
-    kickGain.gain.setValueAtTime(0.9, t);
-    kickGain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
-
-    kickOsc.connect(kickGain);
-    kickGain.connect(this.masterGain);
-    kickOsc.start(t);
-    kickOsc.stop(t + 0.3);
-
-    // Snare (on beats 2 & 4)
-    if (i % 4 === 2) {
-      const bufferSize = this.audioContext.sampleRate * 0.2;
-      const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let j = 0; j < bufferSize; j++) {
-        data[j] = Math.random() * 2 - 1;
-      }
-      const noise = this.audioContext.createBufferSource();
-      noise.buffer = buffer;
-
-      const snareGain = this.audioContext.createGain();
-      snareGain.gain.setValueAtTime(0.5, t);
-      snareGain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
-
-      noise.connect(snareGain);
-      snareGain.connect(this.masterGain);
-      noise.start(t);
-      noise.stop(t + 0.2);
-    }
-  }
-
-  // --- FAST ARPEGGIO (intense melody line) ---
-  const arpeggioNotes = [220, 277.18, 329.63, 440]; // A minor arpeggio
-  for (let i = 0; i < 32; i++) {
-    const t = now + i * 0.25;
-    const note = arpeggioNotes[i % arpeggioNotes.length];
-
-    const osc = this.audioContext.createOscillator();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(note, t);
-
-    const gain = this.audioContext.createGain();
-    gain.gain.setValueAtTime(0.2, t);
-    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
-
-    osc.connect(gain);
-    gain.connect(this.masterGain);
-    osc.start(t);
-    osc.stop(t + 0.2);
-  }
-
-  // --- CHORD STAB (big dark hit) ---
-  const chord = [110, 220, 329.63]; // Root, fifth, minor third
-  chord.forEach((freq, idx) => {
-    const osc = this.audioContext.createOscillator();
+  // Low drone + chord stab (dramatic entry)
+  const chord = [110, 220, 329.63];
+  chord.forEach(freq => {
+    const osc = this.audioContext!.createOscillator();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(freq, now + 1.5);
+    osc.frequency.setValueAtTime(freq, now);
 
-    const gain = this.audioContext.createGain();
-    gain.gain.setValueAtTime(0.4, now + 1.5);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 3.5);
+    const gain = this.audioContext!.createGain();
+    gain.gain.setValueAtTime(0.5, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 3);
 
     osc.connect(gain);
-    gain.connect(this.masterGain);
-    osc.start(now + 1.5);
-    osc.stop(now + 3.5);
+    gain.connect(this.masterGain!);
+
+    osc.start(now);
+    osc.stop(now + 3);
   });
+
+  // Add some punch (kick hit)
+  const kick = this.audioContext.createOscillator();
+  kick.type = 'sine';
+  kick.frequency.setValueAtTime(120, now);
+  kick.frequency.exponentialRampToValueAtTime(40, now + 0.5);
+
+  const kickGain = this.audioContext.createGain();
+  kickGain.gain.setValueAtTime(1.0, now);
+  kickGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+
+  kick.connect(kickGain);
+  kickGain.connect(this.masterGain!);
+  kick.start(now);
+  kick.stop(now + 0.5);
+}
+
+// Short repeating pulse while aura farming continues
+playAuraFarmingLoop(): void {
+  if (!this.audioContext || !this.masterGain) return;
+
+  const now = this.audioContext.currentTime;
+
+  const osc = this.audioContext.createOscillator();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(440, now); // mid note
+
+  const gain = this.audioContext.createGain();
+  gain.gain.setValueAtTime(0.15, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+  osc.connect(gain);
+  gain.connect(this.masterGain!);
+
+  osc.start(now);
+  osc.stop(now + 0.3);
 }
 
 }
