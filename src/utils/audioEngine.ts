@@ -5,8 +5,8 @@ export class AudioEngine {
   private isPlaying = false;
   private melodyIndex = 0;
   private bassIndex = 0;
-  private melodyIntervalId: number | null = null;
-  private bassIntervalId: number | null = null;
+  private drumIndex = 0;
+  private bgmIntervalId: number | null = null;
 
   private scale = [220, 246.94, 277.18, 293.66, 329.63, 369.99, 415.30, 440];
 
@@ -17,24 +17,21 @@ export class AudioEngine {
     [0, 4, 2, 5, 0, 4, 2, 7],
   ];
 
-    private drumPatterns = {
+  private drumPatterns = {
     kick: [1, 0, 0, 0, 1, 0, 0, 0],   // on the "1"
     snare: [0, 0, 1, 0, 0, 0, 1, 0],  // on 2 & 4
     hat:   [1, 1, 1, 1, 1, 1, 1, 1],  // every beat
   };
 
-  private drumIndex = 0;
-  private drumIntervalId: number | null = null;
-
   private bassPatterns = [
-  [0, 0, 4, 4, 0, 0, 4, 4],
-  [0, 4, 0, 5, 0, 7, 0, 5],
-  [0, 0, 5, 5, 4, 4, 2, 2],
-  [0, 2, 4, 5, 4, 2, 0, 0],
-  [0, 7, 0, 5, 0, 4, 0, 2],
-];
-private currentBass: number[] = [];
+    [0, 0, 4, 4, 0, 0, 4, 4],
+    [0, 4, 0, 5, 0, 7, 0, 5],
+    [0, 0, 5, 5, 4, 4, 2, 2],
+    [0, 2, 4, 5, 4, 2, 0, 0],
+    [0, 7, 0, 5, 0, 4, 0, 2],
+  ];
 
+  private currentBass: number[] = [];
   private currentMelody: number[] = [];
 
   initialize(): void {
@@ -48,7 +45,7 @@ private currentBass: number[] = [];
     }
   }
 
-   start(): void {
+  start(): void {
     if (this.isPlaying || !this.audioContext || !this.masterGain) return;
 
     this.isPlaying = true;
@@ -56,33 +53,16 @@ private currentBass: number[] = [];
     this.bassIndex = 0;
     this.drumIndex = 0;
 
-    this.playMelodyNote();
-    this.melodyIntervalId = window.setInterval(() => this.playMelodyNote(), 300);
-
-    this.playBassNote();
-    this.bassIntervalId = window.setInterval(() => this.playBassNote(), 600);
-
-    this.playDrumBeat();
-    this.drumIntervalId = window.setInterval(() => this.playDrumBeat(), 150); // fast ticks
+    this.playBackgroundBeat();
+    this.bgmIntervalId = window.setInterval(() => this.playBackgroundBeat(), 150);
   }
-
 
   stop(): void {
     this.isPlaying = false;
 
-    if (this.melodyIntervalId) {
-      clearInterval(this.melodyIntervalId);
-      this.melodyIntervalId = null;
-    }
-
-    if (this.bassIntervalId) {
-      clearInterval(this.bassIntervalId);
-      this.bassIntervalId = null;
-    }
-
-    if (this.drumIntervalId) {
-      clearInterval(this.drumIntervalId);
-      this.drumIntervalId = null;
+    if (this.bgmIntervalId) {
+      clearInterval(this.bgmIntervalId);
+      this.bgmIntervalId = null;
     }
 
     this.oscillators.forEach(osc => {
@@ -95,9 +75,30 @@ private currentBass: number[] = [];
     this.oscillators = [];
   }
 
-  private playMelodyNote(): void {
-    if (!this.audioContext || !this.masterGain) return;
+  private playBackgroundBeat(): void {
+    if (!this.isPlaying || !this.audioContext || !this.masterGain) return;
 
+    const step = this.drumIndex % 8;
+
+    // Play drums
+    if (this.drumPatterns.kick[step]) this.playKick();
+    if (this.drumPatterns.snare[step]) this.playSnare();
+    if (this.drumPatterns.hat[step]) this.playHat();
+
+    // Play melody every 2 steps (300ms)
+    if (step % 2 === 0) {
+      this.playMelodyNote();
+    }
+
+    // Play bass every 4 steps (600ms)
+    if (step % 4 === 0) {
+      this.playBassNote();
+    }
+
+    this.drumIndex++;
+  }
+
+  private playMelodyNote(): void {
     const noteIndex = this.currentMelody[this.melodyIndex % this.currentMelody.length];
     const frequency = this.scale[noteIndex];
 
@@ -125,22 +126,7 @@ private currentBass: number[] = [];
     }
   }
 
-  private playDrumBeat(): void {
-    if (!this.audioContext || !this.masterGain) return;
-
-    const step = this.drumIndex % 8;
-
-    if (this.drumPatterns.kick[step]) this.playKick();
-    if (this.drumPatterns.snare[step]) this.playSnare();
-    if (this.drumPatterns.hat[step]) this.playHat();
-
-    this.drumIndex++;
-  }
-
-
   private playBassNote(): void {
-    if (!this.audioContext || !this.masterGain) return;
-
     const noteIndex = this.currentBass[this.bassIndex % this.currentBass.length];
     const frequency = this.scale[noteIndex] / 2;
 
@@ -163,9 +149,7 @@ private currentBass: number[] = [];
     this.bassIndex++;
   }
 
-    private playKick(): void {
-    if (!this.audioContext || !this.masterGain) return;
-
+  private playKick(): void {
     const osc = this.audioContext.createOscillator();
     const gain = this.audioContext.createGain();
 
@@ -184,8 +168,6 @@ private currentBass: number[] = [];
   }
 
   private playSnare(): void {
-    if (!this.audioContext || !this.masterGain) return;
-
     const bufferSize = this.audioContext.sampleRate * 0.2;
     const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
     const data = buffer.getChannelData(0);
@@ -209,8 +191,6 @@ private currentBass: number[] = [];
   }
 
   private playHat(): void {
-    if (!this.audioContext || !this.masterGain) return;
-
     const bufferSize = this.audioContext.sampleRate * 0.05;
     const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
     const data = buffer.getChannelData(0);
@@ -230,7 +210,6 @@ private currentBass: number[] = [];
     bandpass.type = "bandpass";
     bandpass.frequency.value = 10000;
 
-
     const gain = this.audioContext.createGain();
     gain.gain.setValueAtTime(0.2, this.audioContext.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
@@ -242,7 +221,6 @@ private currentBass: number[] = [];
     noise.start();
     noise.stop(this.audioContext.currentTime + 0.1);
   }
-
 
   playCollectSound(): void {
     if (!this.audioContext || !this.masterGain) return;
@@ -286,15 +264,15 @@ private currentBass: number[] = [];
 
   playAuraFarmingSound(): void {
     if (!this.audioContext || !this.masterGain) return;
-  
+
     const now = this.audioContext.currentTime;
-  
+
     // Master gain for explosion
     const gain = this.audioContext.createGain();
     gain.gain.setValueAtTime(1.0, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 5); // 5-second decay
     gain.connect(this.masterGain);
-  
+
     // Low-frequency rumble oscillator
     const osc = this.audioContext.createOscillator();
     osc.type = 'sine';
@@ -303,7 +281,7 @@ private currentBass: number[] = [];
     osc.connect(gain);
     osc.start(now);
     osc.stop(now + 5);
-  
+
     // Noise burst for explosion texture
     const bufferSize = this.audioContext.sampleRate * 1; // 1 second buffer
     const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
@@ -313,16 +291,16 @@ private currentBass: number[] = [];
     }
     const noise = this.audioContext.createBufferSource();
     noise.buffer = buffer;
-  
+
     const noiseGain = this.audioContext.createGain();
     noiseGain.gain.setValueAtTime(1.0, now);
     noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 5); // match rumble decay
-  
+
     noise.connect(noiseGain);
     noiseGain.connect(gain);
     noise.start(now);
     noise.stop(now + 5);
-  
+
     // Optional: add mid-frequency crackle using short oscillators
     const osc2 = this.audioContext.createOscillator();
     osc2.type = 'square';
@@ -336,5 +314,4 @@ private currentBass: number[] = [];
     osc2.start(now);
     osc2.stop(now + 5);
   }
-
 }
