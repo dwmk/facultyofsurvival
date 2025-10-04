@@ -18,9 +18,9 @@ export class AudioEngine {
   ];
 
   private drumPatterns = {
-    kick: [1, 0, 0, 0, 1, 0, 0, 0],   // on the "1"
-    snare: [0, 0, 1, 0, 0, 0, 1, 0],  // on 2 & 4
-    hat:   [1, 1, 1, 1, 1, 1, 1, 1],  // every beat
+    kick: [1, 0, 0, 0, 1, 0, 0, 0],
+    snare: [0, 0, 1, 0, 0, 0, 1, 0],
+    hat: [1, 1, 1, 1, 1, 1, 1, 1],
   };
 
   private bassPatterns = [
@@ -34,15 +34,71 @@ export class AudioEngine {
   private currentBass: number[] = [];
   private currentMelody: number[] = [];
 
-  initialize(): void {
+  async initialize(): Promise<void> {
     if (!this.audioContext) {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       this.masterGain = this.audioContext.createGain();
       this.masterGain.gain.value = 0.5;
       this.masterGain.connect(this.audioContext.destination);
+
       this.currentMelody = this.melodyPatterns[Math.floor(Math.random() * this.melodyPatterns.length)];
       this.currentBass = this.bassPatterns[Math.floor(Math.random() * this.bassPatterns.length)];
+
+      // Load the bitcrusher worklet
+      const bitCrusherProcessor = `
+        class BitCrusherProcessor extends AudioWorkletProcessor {
+          static get parameterDescriptors() {
+            return [
+              { name: 'bits', defaultValue: 6, minValue: 1, maxValue: 16 },
+              { name: 'normFreq', defaultValue: 0.1, minValue: 0, maxValue: 1 }
+            ];
+          }
+
+          constructor() {
+            super();
+            this.phaser = 0;
+            this.last = 0;
+          }
+
+          process(inputs, outputs, parameters) {
+            const input = inputs[0][0];
+            const output = outputs[0][0];
+            const bits = parameters.bits.length > 0 ? parameters.bits[0] : 6;
+            const normFreq = parameters.normFreq.length > 0 ? parameters.normFreq[0] : 0.1;
+            const step = Math.pow(0.5, bits);
+
+            if (!input) return true;
+
+            for (let i = 0; i < input.length; i++) {
+              this.phaser += normFreq;
+              if (this.phaser >= 1.0) {
+                this.phaser -= 1.0;
+                this.last = step * Math.floor(input[i] / step + 0.5);
+              }
+              output[i] = this.last;
+            }
+
+            return true;
+          }
+        }
+
+        registerProcessor('bit-crusher', BitCrusherProcessor);
+      `;
+      const blob = new Blob([bitCrusherProcessor], { type: "application/javascript" });
+      const url = URL.createObjectURL(blob);
+      await this.audioContext.audioWorklet.addModule(url);
     }
+  }
+
+  private createBitCrusher(bits = 6, normFreq = 0.1): AudioWorkletNode {
+    if (!this.audioContext) throw new Error("AudioContext not initialized");
+    const node = new AudioWorkletNode(this.audioContext, "bit-crusher", {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [1],
+      parameterData: { bits, normFreq },
+    });
+    return node;
   }
 
   start(): void {
@@ -66,11 +122,7 @@ export class AudioEngine {
     }
 
     this.oscillators.forEach(osc => {
-      try {
-        osc.stop();
-      } catch (e) {
-        // Oscillator already stopped
-      }
+      try { osc.stop(); } catch (e) {}
     });
     this.oscillators = [];
   }
@@ -80,179 +132,141 @@ export class AudioEngine {
 
     const step = this.drumIndex % 8;
 
-    // Play drums
     if (this.drumPatterns.kick[step]) this.playKick();
     if (this.drumPatterns.snare[step]) this.playSnare();
     if (this.drumPatterns.hat[step]) this.playHat();
 
-    // Play melody every 2 steps (300ms)
-    if (step % 2 === 0) {
-      this.playMelodyNote();
-    }
-
-    // Play bass every 4 steps (600ms)
-    if (step % 4 === 0) {
-      this.playBassNote();
-    }
+    if (step % 2 === 0) this.playMelodyNote();
+    if (step % 4 === 0) this.playBassNote();
 
     this.drumIndex++;
   }
 
-  private createBitCrusher(bits = 6, normFreq = 0.1): AudioNode {
-    const node = this.audioContext!.createScriptProcessor(256, 1, 1);
-    const step = Math.pow(0.5, bits);
-    let phaser = 0, last = 0;
-    node.onaudioprocess = (e) => {
-      const input = e.inputBuffer.getChannelData(0);
-      const output = e.outputBuffer.getChannelData(0);
-      for (let i = 0; i < input.length; i++) {
-        phaser += normFreq;
-        if (phaser >= 1.0) {
-          phaser -= 1.0;
-          last = step * Math.floor(input[i] / step + 0.5);
-        }
-        output[i] = last;
-      }
-    };
-    return node;
-  }
-
-
   private playMelodyNote(): void {
     const noteIndex = this.currentMelody[this.melodyIndex % this.currentMelody.length];
     const root = this.scale[noteIndex];
-  
-    const osc = this.audioContext.createOscillator();
-    const gain = this.audioContext.createGain();
-  
-    // Cycle through a quick arpeggio (root, 3rd, 5th)
+
+    const osc = this.audioContext!.createOscillator();
+    const gain = this.audioContext!.createGain();
+
     const arpeggio = [root, root * 1.25, root * 1.5];
-    let t = this.audioContext.currentTime;
+    let t = this.audioContext!.currentTime;
     arpeggio.forEach((freq, i) => {
       osc.frequency.setValueAtTime(freq, t + i * 0.05);
     });
-  
+
     osc.type = 'square';
     gain.gain.value = 0.2;
     gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
-  
+
     osc.connect(gain);
-    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain);
-  
+    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain!);
+
     osc.start();
     osc.stop(t + 0.3);
-  
+
     this.oscillators.push(osc);
     this.melodyIndex++;
-  
+
     if (this.melodyIndex >= this.currentMelody.length * 2) {
       this.currentMelody = this.melodyPatterns[Math.floor(Math.random() * this.melodyPatterns.length)];
       this.melodyIndex = 0;
     }
   }
 
-
   private playBassNote(): void {
     const noteIndex = this.currentBass[this.bassIndex % this.currentBass.length];
     const frequency = this.scale[noteIndex] / 2;
 
-    const osc = this.audioContext.createOscillator();
-    const gain = this.audioContext.createGain();
+    const osc = this.audioContext!.createOscillator();
+    const gain = this.audioContext!.createGain();
 
     osc.type = 'sawtooth';
     osc.frequency.value = frequency;
 
     gain.gain.value = 0.2;
-    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext!.currentTime + 0.5);
 
     osc.connect(gain);
-    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain);
+    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain!);
 
     osc.start();
-    osc.stop(this.audioContext.currentTime + 0.5);
+    osc.stop(this.audioContext!.currentTime + 0.5);
 
     this.oscillators.push(osc);
     this.bassIndex++;
   }
 
   private playKick(): void {
-    const osc = this.audioContext.createOscillator();
-    const gain = this.audioContext.createGain();
+    const osc = this.audioContext!.createOscillator();
+    const gain = this.audioContext!.createGain();
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(150, this.audioContext.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.5);
+    osc.frequency.setValueAtTime(150, this.audioContext!.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(50, this.audioContext!.currentTime + 0.5);
 
-    gain.gain.setValueAtTime(0.8, this.audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
+    gain.gain.setValueAtTime(0.8, this.audioContext!.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext!.currentTime + 0.5);
 
     osc.connect(gain);
-    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain);
+    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain!);
 
     osc.start();
-    osc.stop(this.audioContext.currentTime + 0.5);
+    osc.stop(this.audioContext!.currentTime + 0.5);
   }
 
   private playSnare(): void {
-    const bufferSize = this.audioContext.sampleRate * 0.2;
-    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+    const bufferSize = this.audioContext!.sampleRate * 0.2;
+    const buffer = this.audioContext!.createBuffer(1, bufferSize, this.audioContext!.sampleRate);
     const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
 
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1; // white noise
-    }
-
-    const noise = this.audioContext.createBufferSource();
+    const noise = this.audioContext!.createBufferSource();
     noise.buffer = buffer;
 
-    const gain = this.audioContext.createGain();
-    gain.gain.setValueAtTime(0.4, this.audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
+    const gain = this.audioContext!.createGain();
+    gain.gain.setValueAtTime(0.4, this.audioContext!.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext!.currentTime + 0.2);
 
     noise.connect(gain);
-    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain);
+    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain!);
 
     noise.start();
-    noise.stop(this.audioContext.currentTime + 0.2);
+    noise.stop(this.audioContext!.currentTime + 0.2);
   }
 
   private playHat(): void {
     const bufferSize = this.audioContext!.sampleRate * 0.02;
     const buffer = this.audioContext!.createBuffer(1, bufferSize, this.audioContext!.sampleRate);
     const data = buffer.getChannelData(0);
-  
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize); // decay
-    }
-  
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+
     const noise = this.audioContext!.createBufferSource();
     noise.buffer = buffer;
-  
+
     const gain = this.audioContext!.createGain();
-    gain.gain.setValueAtTime(0.2, this.audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.05);
-  
-    // Add tiny blip for retro feel
+    gain.gain.setValueAtTime(0.2, this.audioContext!.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext!.currentTime + 0.05);
+
     const osc = this.audioContext!.createOscillator();
     osc.type = "square";
     osc.frequency.value = 8000;
     const oscGain = this.audioContext!.createGain();
-    oscGain.gain.setValueAtTime(0.1, this.audioContext.currentTime);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.05);
-  
+    oscGain.gain.setValueAtTime(0.1, this.audioContext!.currentTime);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, this.audioContext!.currentTime + 0.05);
+
     noise.connect(gain);
     osc.connect(oscGain);
-    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain);
-    oscGain.connect(this.masterGain);
-  
+    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain!);
+    oscGain.connect(this.masterGain!);
+
     noise.start();
     noise.stop(this.audioContext!.currentTime + 0.05);
     osc.start();
     osc.stop(this.audioContext!.currentTime + 0.05);
   }
 
-
-  playCollectSound(): void {
+   playCollectSound(): void {
     if (!this.audioContext || !this.masterGain) return;
 
     const osc = this.audioContext.createOscillator();
