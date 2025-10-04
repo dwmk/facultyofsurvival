@@ -283,4 +283,32 @@ private currentBass: number[] = [];
     osc.start();
     osc.stop(this.audioContext.currentTime + 0.2);
   }
+
+  playAuraFarmingSound(): void {
+    if (!this.audioContext || !this.masterGain) return;
+
+    const osc1 = this.audioContext.createOscillator();
+    const osc2 = this.audioContext.createOscillator();
+    const gain = this.audioContext.createGain();
+
+    osc1.type = 'square';
+    osc1.frequency.value = 200;
+    osc1.frequency.exponentialRampToValueAtTime(800, this.audioContext.currentTime + 0.3);
+
+    osc2.type = 'sine';
+    osc2.frequency.value = 400;
+    osc2.frequency.exponentialRampToValueAtTime(1600, this.audioContext.currentTime + 0.3);
+
+    gain.gain.value = 0.4;
+    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc1.start();
+    osc2.start();
+    osc1.stop(this.audioContext.currentTime + 0.3);
+    osc2.stop(this.audioContext.currentTime + 0.3);
+  }
 }

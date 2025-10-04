@@ -16,6 +16,8 @@ export interface Player extends Character {
   health: number;
   maxHealth: number;
   score: number;
+  isAuraFarming: boolean;
+  lastMoveTime: number;
 }
 
 export enum StudentState {

@@ -4,9 +4,10 @@ interface GameOverScreenProps {
   score: number;
   survivalTime: number;
   onRestart: () => void;
+  reason?: string;
 }
 
-export const GameOverScreen = ({ score, survivalTime, onRestart }: GameOverScreenProps) => {
+export const GameOverScreen = ({ score, survivalTime, onRestart, reason }: GameOverScreenProps) => {
   const formatTime = (frames: number): string => {
     const seconds = Math.floor(frames / 60);
     const minutes = Math.floor(seconds / 60);
@@ -23,7 +24,7 @@ export const GameOverScreen = ({ score, survivalTime, onRestart }: GameOverScree
           <div className="bg-gray-800 p-4 rounded flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Trophy className="text-yellow-500" size={32} />
-              <span className="text-lg">Final Score</span>
+              <span className="text-lg">Final Ego</span>
             </div>
             <span className="text-3xl font-bold text-yellow-400">{score}</span>
           </div>
@@ -46,7 +47,7 @@ export const GameOverScreen = ({ score, survivalTime, onRestart }: GameOverScree
         </button>
 
         <p className="text-center text-gray-400 mt-4 text-sm">
-          You were overwhelmed by students' requests!
+          {reason || "You were overwhelmed by students' requests!"}
         </p>
       </div>
     </div>

@@ -35,7 +35,7 @@ export const HUD = ({ player, survivalTime }: HUDProps) => {
       <div className="flex items-center gap-3">
         <Trophy className="text-yellow-500" size={24} />
         <div className="flex flex-col gap-1">
-          <div className="text-xs text-gray-400">Score</div>
+          <div className="text-xs text-gray-400">Ego</div>
           <div className="text-2xl font-bold text-yellow-400">{player.score}</div>
         </div>
       </div>

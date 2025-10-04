@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Player, Student, Coin, Direction, TileType, Position, StudentState } from '../types/game';
 import { MapGenerator } from '../utils/mapGenerator';
 import { STUDENT_COMPLAINTS } from '../data/complaints';
+import { AudioEngine } from '../utils/audioEngine';
 
 const MAP_SIZE = 64;
 const TILE_SIZE = 32;
@@ -14,9 +15,14 @@ const DAMAGE_COOLDOWN = 60;
 const NUM_STUDENTS = 5;
 const NUM_COINS = 30;
 const COIN_VALUE = 10;
+const COIN_HEALTH_BOOST = 5;
 const STUDENT_VIEW_DISTANCE = 10;
 const COMMUNICATION_RANGE = 8;
 const SPEED_INCREASE_PER_MINUTE = 0.1;
+const AURA_FARMING_DELAY = 5;
+const AURA_FARMING_GAIN = 10;
+const EGO_DECAY_RATE = 1;
+const STUDENT_SEPARATION_DISTANCE = TILE_SIZE * 2;
 
 export const useGameState = () => {
   const [gameMap, setGameMap] = useState<TileType[][]>([]);
@@ -26,19 +32,26 @@ export const useGameState = () => {
   const [gameStarted, setGameStarted] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [survivalTime, setSurvivalTime] = useState(0);
+  const [gameOverReason, setGameOverReason] = useState<string>('');
 
   const keysPressed = useRef<Set<string>>(new Set());
   const lastDamageTime = useRef<number>(0);
   const animationFrame = useRef<number>(0);
   const mapRef = useRef<TileType[][]>([]);
+  const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
+  const lastEgoDecayTime = useRef<number>(0);
+  const mapGeneratorRef = useRef<MapGenerator | null>(null);
+  const auraFarmingSoundPlayed = useRef<boolean>(false);
 
   const initializeGame = useCallback(() => {
     const mapGen = new MapGenerator(MAP_SIZE, MAP_SIZE);
     const newMap = mapGen.generate();
     mapRef.current = newMap;
+    mapGeneratorRef.current = mapGen;
     setGameMap(newMap);
 
     const playerSpawn = mapGen.findSpawnPoint();
+    const currentTime = Date.now();
     const newPlayer: Player = {
       id: 'player',
       position: { x: playerSpawn.x * TILE_SIZE + TILE_SIZE / 2, y: playerSpawn.y * TILE_SIZE + TILE_SIZE / 2 },
@@ -48,7 +61,9 @@ export const useGameState = () => {
       isMoving: false,
       health: 100,
       maxHealth: 100,
-      score: 0,
+      score: 30,
+      isAuraFarming: false,
+      lastMoveTime: currentTime,
     };
     setPlayer(newPlayer);
 
@@ -87,9 +102,12 @@ export const useGameState = () => {
     setCoins(newCoins);
 
     setGameOver(false);
+    setGameOverReason('');
     setSurvivalTime(0);
     lastDamageTime.current = 0;
+    lastEgoDecayTime.current = Date.now();
     animationFrame.current = 0;
+    auraFarmingSoundPlayed.current = false;
   }, []);
 
   const startGame = useCallback(() => {
@@ -138,7 +156,7 @@ export const useGameState = () => {
     return Math.sqrt(dx * dx + dy * dy);
   };
 
-  const moveTowards = useCallback((from: Position, to: Position, speed: number): { position: Position; direction: Direction; isMoving: boolean } => {
+  const moveTowards = useCallback((from: Position, to: Position, speed: number, studentId?: string, allStudents?: Student[]): { position: Position; direction: Direction; isMoving: boolean } => {
     const dx = to.x - from.x;
     const dy = to.y - from.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
@@ -150,6 +168,24 @@ export const useGameState = () => {
     const ratio = speed / distance;
     let newX = from.x + dx * ratio;
     let newY = from.y + dy * ratio;
+
+    if (studentId && allStudents) {
+      for (const other of allStudents) {
+        if (other.id === studentId) continue;
+        const distToOther = Math.sqrt(
+          Math.pow(newX - other.position.x, 2) + Math.pow(newY - other.position.y, 2)
+        );
+        if (distToOther < STUDENT_SEPARATION_DISTANCE) {
+          const avoidX = newX - other.position.x;
+          const avoidY = newY - other.position.y;
+          const avoidDist = Math.sqrt(avoidX * avoidX + avoidY * avoidY);
+          if (avoidDist > 0) {
+            newX += (avoidX / avoidDist) * speed * 0.5;
+            newY += (avoidY / avoidDist) * speed * 0.5;
+          }
+        }
+      }
+    }
 
     if (!isWalkable(newX, newY)) {
       if (isWalkable(newX, from.y)) {
@@ -221,6 +257,8 @@ export const useGameState = () => {
         if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) dx -= currentMoveSpeed;
         if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) dx += currentMoveSpeed;
 
+        const currentTime = Date.now();
+
         if (dx !== 0 || dy !== 0) {
           const newX = prevPlayer.position.x + dx;
           const newY = prevPlayer.position.y + dy;
@@ -228,6 +266,12 @@ export const useGameState = () => {
           if (isWalkable(newX, newY)) {
             newPlayer.position = { x: newX, y: newY };
             newPlayer.isMoving = true;
+            newPlayer.lastMoveTime = currentTime;
+
+            if (prevPlayer.isAuraFarming) {
+              newPlayer.isAuraFarming = false;
+              auraFarmingSoundPlayed.current = false;
+            }
 
             if (Math.abs(dx) > Math.abs(dy)) {
               newPlayer.direction = dx > 0 ? Direction.RIGHT : Direction.LEFT;
@@ -242,10 +286,34 @@ export const useGameState = () => {
         } else {
           newPlayer.isMoving = false;
           newPlayer.animationFrame = 0;
+
+          const timeSinceLastMove = (currentTime - prevPlayer.lastMoveTime) / 1000;
+          if (timeSinceLastMove >= AURA_FARMING_DELAY && !prevPlayer.isAuraFarming) {
+            newPlayer.isAuraFarming = true;
+            if (!auraFarmingSoundPlayed.current) {
+              audioEngineRef.current.playAuraFarmingSound();
+              auraFarmingSoundPlayed.current = true;
+            }
+          }
+
+          if (newPlayer.isAuraFarming && animationFrame.current % 60 === 0) {
+            newPlayer.score += AURA_FARMING_GAIN;
+          }
         }
 
         if (newPlayer.health < newPlayer.maxHealth) {
           newPlayer.health = Math.min(newPlayer.maxHealth, newPlayer.health + HEALTH_REGEN_RATE / 60);
+        }
+
+        const egoTimePassed = (currentTime - lastEgoDecayTime.current) / 1000;
+        if (egoTimePassed >= 60) {
+          newPlayer.score = Math.max(0, newPlayer.score - EGO_DECAY_RATE);
+          lastEgoDecayTime.current = currentTime;
+
+          if (newPlayer.score <= 0) {
+            setGameOver(true);
+            setGameOverReason('You ran out of ego');
+          }
         }
 
         return newPlayer;
@@ -259,7 +327,9 @@ export const useGameState = () => {
 
           newStudent.communicationCooldown = Math.max(0, newStudent.communicationCooldown - 1);
 
-          if (hasLineOfSight(student.position, player.position)) {
+          const canSeePlayer = player.isAuraFarming || hasLineOfSight(student.position, player.position);
+
+          if (canSeePlayer) {
             newStudent.chasing = true;
             newStudent.state = StudentState.CHASING;
             newStudent.lastSeenPlayer = { ...player.position };
@@ -328,8 +398,17 @@ export const useGameState = () => {
             if (!anyChasing && newStudent.groupId) {
               const groupMembers = prevStudents.filter(s => s.groupId === newStudent.groupId && s.id !== student.id);
               if (groupMembers.length > 0) {
-                const randomMember = groupMembers[Math.floor(Math.random() * groupMembers.length)];
-                newStudent.target = randomMember.position;
+                if (animationFrame.current % 120 === 0) {
+                  const randomAngle = Math.random() * Math.PI * 2;
+                  const searchDist = TILE_SIZE * 4;
+                  newStudent.target = {
+                    x: student.position.x + Math.cos(randomAngle) * searchDist,
+                    y: student.position.y + Math.sin(randomAngle) * searchDist,
+                  };
+                } else if (!newStudent.target) {
+                  const randomMember = groupMembers[Math.floor(Math.random() * groupMembers.length)];
+                  newStudent.target = randomMember.position;
+                }
               }
             }
           } else if (newStudent.state === StudentState.SEARCHING && newStudent.searchTarget) {
@@ -361,7 +440,8 @@ export const useGameState = () => {
           }
 
           if (newStudent.target) {
-            const result = moveTowards(student.position, newStudent.target, currentStudentSpeed);
+            const studentSpeed = player.isAuraFarming ? currentStudentSpeed * 2 : currentStudentSpeed;
+            const result = moveTowards(student.position, newStudent.target, studentSpeed, student.id, prevStudents);
             newStudent.position = result.position;
             newStudent.direction = result.direction;
             newStudent.isMoving = result.isMoving;
@@ -381,8 +461,10 @@ export const useGameState = () => {
               const newHealth = p.health - STUDENT_DAMAGE;
               if (newHealth <= 0) {
                 setGameOver(true);
+                setGameOverReason('Your mental health depleted');
               }
               lastDamageTime.current = Date.now();
+              audioEngineRef.current.playHitSound();
               return { ...p, health: Math.max(0, newHealth) };
             });
           }
@@ -394,18 +476,39 @@ export const useGameState = () => {
       });
 
       setCoins(prevCoins => {
-        if (!player) return prevCoins;
+        if (!player || !mapGeneratorRef.current) return prevCoins;
 
-        return prevCoins.map(coin => {
+        const updatedCoins = prevCoins.map(coin => {
           if (coin.collected) return coin;
 
           const dist = getDistance(player.position, coin.position);
           if (dist < TILE_SIZE) {
-            setPlayer(p => p ? { ...p, score: p.score + COIN_VALUE } : p);
+            setPlayer(p => {
+              if (!p) return p;
+              const newHealth = Math.min(p.maxHealth, p.health + COIN_HEALTH_BOOST);
+              return { ...p, score: p.score + COIN_VALUE, health: newHealth };
+            });
+            audioEngineRef.current.playCollectSound();
             return { ...coin, collected: true };
           }
           return coin;
         });
+
+        if (animationFrame.current % 180 === 0) {
+          return updatedCoins.map(coin => {
+            if (coin.collected) {
+              const spawn = mapGeneratorRef.current!.findSpawnPoint();
+              return {
+                ...coin,
+                position: { x: spawn.x * TILE_SIZE + TILE_SIZE / 2, y: spawn.y * TILE_SIZE + TILE_SIZE / 2 },
+                collected: false,
+              };
+            }
+            return coin;
+          });
+        }
+
+        return updatedCoins;
       });
     }, 1000 / 60);
 
@@ -419,6 +522,7 @@ export const useGameState = () => {
     coins,
     gameStarted,
     gameOver,
+    gameOverReason,
     survivalTime,
     startGame,
     restartGame,
