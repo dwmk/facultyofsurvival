@@ -12,12 +12,12 @@ const ANIMATION_SPEED = 10;
 const HEALTH_REGEN_RATE = 0.5;
 const STUDENT_DAMAGE = 5;
 const DAMAGE_COOLDOWN = 60;
-const NUM_STUDENTS = 5;
+const NUM_STUDENTS = 7;
 const NUM_COINS = 30;
 const COIN_VALUE = 10;
 const COIN_HEALTH_BOOST = 5;
 const STUDENT_VIEW_DISTANCE = 10;
-const COMMUNICATION_RANGE = 8;
+const COMMUNICATION_RANGE = 10;
 const SPEED_INCREASE_PER_MINUTE = 0.1;
 const AURA_FARMING_DELAY = 5;
 const AURA_FARMING_GAIN = 10;
@@ -299,7 +299,7 @@ export const useGameState = () => {
 
           if (newPlayer.isAuraFarming && animationFrame.current % 60 === 0) {
             newPlayer.score += AURA_FARMING_GAIN;
-            newPlayer.health -= 1;
+            newPlayer.health -= 2;
             audioEngineRef.current.playAuraFarmingSound();
           }
         }
