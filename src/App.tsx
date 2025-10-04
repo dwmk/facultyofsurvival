@@ -90,11 +90,6 @@ function App() {
         mapSize={MAP_SIZE}
       />
 
-      <div className="text-gray-400 text-sm text-center">
-        <p>Use WASD or Arrow Keys to move</p>
-        <p>Avoid students and collect coins to survive!</p>
-      </div>
-
       {gameOver && player && (
         <GameOverScreen
           score={player.score}
