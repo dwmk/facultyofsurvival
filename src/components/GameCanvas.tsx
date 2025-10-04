@@ -166,8 +166,8 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
 
     if (spritesLoadedRef.current) {
       students.forEach(student => {
-        const screenX = student.position.x - cameraX - 39;
-        const screenY = student.position.y - cameraY - 54;
+        const screenX = student.position.x - cameraX - 40;
+        const screenY = student.position.y - cameraY - 40;
 
         if (screenX < -100 || screenX > VIEWPORT_WIDTH + 100 || screenY < -100 || screenY > VIEWPORT_HEIGHT + 100) {
           return;
@@ -181,7 +181,7 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
           student.isMoving,
           screenX,
           screenY,
-          1
+          2.5
         );
 
         if (student.state === StudentState.CHASING || student.state === StudentState.INFORMED) {
@@ -209,7 +209,7 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
           const padding = 8;
           const bubbleWidth = Math.min(maxWidth + padding * 2, 200);
           const bubbleHeight = lines.length * lineHeight + padding * 2;
-          const bubbleX = screenX + 39 - bubbleWidth / 2;
+          const bubbleX = screenX + 40 - bubbleWidth / 2;
           const bubbleY = screenY - bubbleHeight - 15;
 
           ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
@@ -240,8 +240,8 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
         }
       });
 
-      const playerScreenX = player.position.x - cameraX - 39;
-      const playerScreenY = player.position.y - cameraY - 54;
+      const playerScreenX = player.position.x - cameraX - 40;
+      const playerScreenY = player.position.y - cameraY - 40;
 
       spriteLoaderRef.current.drawSprite(
         ctx,
@@ -251,7 +251,7 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
         player.isMoving,
         playerScreenX,
         playerScreenY,
-        1
+        2.5
       );
 
       if (player.isAuraFarming) {
@@ -276,7 +276,7 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
         gradient.addColorStop(1, 'rgba(168, 85, 247, 0.3)');
 
         ctx.fillStyle = gradient;
-        ctx.fillText('AURA FARMING', playerScreenX + 39, playerScreenY - 20);
+        ctx.fillText('AURA FARMING', playerScreenX + 40, playerScreenY - 20);
 
         ctx.restore();
       }
