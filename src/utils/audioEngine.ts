@@ -286,29 +286,55 @@ private currentBass: number[] = [];
 
   playAuraFarmingSound(): void {
     if (!this.audioContext || !this.masterGain) return;
-
-    const osc1 = this.audioContext.createOscillator();
-    const osc2 = this.audioContext.createOscillator();
+  
+    const now = this.audioContext.currentTime;
+  
+    // Master gain for explosion
     const gain = this.audioContext.createGain();
-
-    osc1.type = 'square';
-    osc1.frequency.value = 200;
-    osc1.frequency.exponentialRampToValueAtTime(800, this.audioContext.currentTime + 0.3);
-
-    osc2.type = 'sine';
-    osc2.frequency.value = 400;
-    osc2.frequency.exponentialRampToValueAtTime(1600, this.audioContext.currentTime + 0.3);
-
-    gain.gain.value = 0.4;
-    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
-
-    osc1.connect(gain);
-    osc2.connect(gain);
+    gain.gain.setValueAtTime(1.0, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 5); // 5-second decay
     gain.connect(this.masterGain);
-
-    osc1.start();
-    osc2.start();
-    osc1.stop(this.audioContext.currentTime + 0.3);
-    osc2.stop(this.audioContext.currentTime + 0.3);
+  
+    // Low-frequency rumble oscillator
+    const osc = this.audioContext.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(40, now);           // deep rumble
+    osc.frequency.exponentialRampToValueAtTime(20, now + 5); // slow downward sweep
+    osc.connect(gain);
+    osc.start(now);
+    osc.stop(now + 5);
+  
+    // Noise burst for explosion texture
+    const bufferSize = this.audioContext.sampleRate * 1; // 1 second buffer
+    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / bufferSize); // decaying noise
+    }
+    const noise = this.audioContext.createBufferSource();
+    noise.buffer = buffer;
+  
+    const noiseGain = this.audioContext.createGain();
+    noiseGain.gain.setValueAtTime(1.0, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 5); // match rumble decay
+  
+    noise.connect(noiseGain);
+    noiseGain.connect(gain);
+    noise.start(now);
+    noise.stop(now + 5);
+  
+    // Optional: add mid-frequency crackle using short oscillators
+    const osc2 = this.audioContext.createOscillator();
+    osc2.type = 'square';
+    osc2.frequency.setValueAtTime(300, now);
+    osc2.frequency.exponentialRampToValueAtTime(100, now + 5);
+    const osc2Gain = this.audioContext.createGain();
+    osc2Gain.gain.setValueAtTime(0.2, now);
+    osc2Gain.gain.exponentialRampToValueAtTime(0.001, now + 5);
+    osc2.connect(osc2Gain);
+    osc2Gain.connect(gain);
+    osc2.start(now);
+    osc2.stop(now + 5);
   }
+
 }
