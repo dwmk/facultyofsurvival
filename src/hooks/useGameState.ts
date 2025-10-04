@@ -5,11 +5,11 @@ import { STUDENT_COMPLAINTS } from '../data/complaints';
 
 const MAP_SIZE = 64;
 const TILE_SIZE = 32;
-const BASE_MOVE_SPEED = 2;
-const BASE_STUDENT_SPEED = 1.5;
-const ANIMATION_SPEED = 8;
+const BASE_MOVE_SPEED = 6;
+const BASE_STUDENT_SPEED = 5;
+const ANIMATION_SPEED = 10;
 const HEALTH_REGEN_RATE = 0.5;
-const STUDENT_DAMAGE = 20;
+const STUDENT_DAMAGE = 5;
 const DAMAGE_COOLDOWN = 60;
 const NUM_STUDENTS = 5;
 const NUM_COINS = 30;
