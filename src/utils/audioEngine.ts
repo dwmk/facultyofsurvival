@@ -230,10 +230,6 @@ private currentBass: number[] = [];
     bandpass.type = "bandpass";
     bandpass.frequency.value = 10000;
 
-    noise.connect(highpass);
-    highpass.connect(bandpass);
-    bandpass.connect(gain);
-
 
     const gain = this.audioContext.createGain();
     gain.gain.setValueAtTime(0.2, this.audioContext.currentTime);
