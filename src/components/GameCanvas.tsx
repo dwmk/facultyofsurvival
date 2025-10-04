@@ -105,9 +105,9 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
   const h = 32 * scale; // Sprite height after scaling
 
   const shadowX = spriteX + w / 2; // Center horizontally
-  const shadowY = spriteY + h + 5; // Below the sprite by 5px
+  const shadowY = spriteY + h + 2; // Below the sprite by 2px
 
-  const shadowWidth = w * 1.2; // Slightly wider than sprite
+  const shadowWidth = w * 0.7; // Slightly wider than sprite
   const shadowHeight = h * 0.2; // Flat oval
 
   ctx.save();
