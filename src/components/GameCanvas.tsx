@@ -11,8 +11,8 @@ interface GameCanvasProps {
   mapSize: number;
 }
 
-const VIEWPORT_WIDTH = 900;
-const VIEWPORT_HEIGHT = 400;
+const VIEWPORT_WIDTH = 800;
+const VIEWPORT_HEIGHT = 600;
 const SPRITE_URL = 'https://dwmk.github.io/delta-telekom/Assets/spritesheet.png';
 
 export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize }: GameCanvasProps) => {
