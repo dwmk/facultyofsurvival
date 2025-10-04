@@ -1,442 +1,535 @@
-export class AudioEngine {
-  private audioContext: AudioContext | null = null;
-  private masterGain: GainNode | null = null;
-  private audioSources: (OscillatorNode | AudioBufferSourceNode)[] = [];
-  private isPlaying = false;
-  private backgroundTick = 0; // Unified tick for background
-  private melodyIndex = 0;
-  private bassIndex = 0;
-  private drumIndex = 0;
-  private backgroundIntervalId: number | null = null; // Single ID for all background
-  private auraIntervalId: number | null = null;
-  private isAuraFarming = false;
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Player, Student, Coin, Direction, TileType, Position, StudentState } from '../types/game';
+import { MapGenerator } from '../utils/mapGenerator';
+import { STUDENT_COMPLAINTS } from '../data/complaints';
+import { AudioEngine } from '../utils/audioEngine';
 
-  private scale = [220, 246.94, 277.18, 293.66, 329.63, 369.99, 415.30, 440];
+const MAP_SIZE = 64;
+const TILE_SIZE = 32;
+const BASE_MOVE_SPEED = 6;
+const BASE_STUDENT_SPEED = 5;
+const ANIMATION_SPEED = 10;
+const HEALTH_REGEN_RATE = 0.5;
+const STUDENT_DAMAGE = 5;
+const DAMAGE_COOLDOWN = 60;
+const NUM_STUDENTS = 5;
+const NUM_COINS = 30;
+const COIN_VALUE = 10;
+const COIN_HEALTH_BOOST = 5;
+const STUDENT_VIEW_DISTANCE = 10;
+const COMMUNICATION_RANGE = 8;
+const SPEED_INCREASE_PER_MINUTE = 0.1;
+const AURA_FARMING_DELAY = 5;
+const AURA_FARMING_GAIN = 10;
+const EGO_DECAY_RATE = 1;
+const STUDENT_SEPARATION_DISTANCE = TILE_SIZE * 2;
 
-  private melodyPatterns = [
-    [0, 2, 4, 2, 0, 2, 4, 5],
-    [4, 5, 7, 5, 4, 2, 0, 2],
-    [2, 4, 5, 7, 5, 4, 2, 0],
-    [0, 4, 2, 5, 0, 4, 2, 7],
-  ];
+export const useGameState = () => {
+  const [gameMap, setGameMap] = useState<TileType[][]>([]);
+  const [player, setPlayer] = useState<Player | null>(null);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [coins, setCoins] = useState<Coin[]>([]);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
+  const [survivalTime, setSurvivalTime] = useState(0);
+  const [gameOverReason, setGameOverReason] = useState<string>('');
 
-  private drumPatterns = {
-    kick: [1, 0, 0, 0, 1, 0, 0, 0],   // on the "1"
-    snare: [0, 0, 1, 0, 0, 0, 1, 0],  // on 2 & 4
-    hat:   [1, 1, 1, 1, 1, 1, 1, 1],  // every beat
+  const keysPressed = useRef<Set<string>>(new Set());
+  const lastDamageTime = useRef<number>(0);
+  const animationFrame = useRef<number>(0);
+  const mapRef = useRef<TileType[][]>([]);
+  const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
+  const lastEgoDecayTime = useRef<number>(0);
+  const mapGeneratorRef = useRef<MapGenerator | null>(null);
+  const auraFarmingSoundPlayed = useRef<boolean>(false);
+
+  const initializeGame = useCallback(() => {
+    const mapGen = new MapGenerator(MAP_SIZE, MAP_SIZE);
+    const newMap = mapGen.generate();
+    mapRef.current = newMap;
+    mapGeneratorRef.current = mapGen;
+    setGameMap(newMap);
+
+    const playerSpawn = mapGen.findSpawnPoint();
+    const currentTime = Date.now();
+    const newPlayer: Player = {
+      id: 'player',
+      position: { x: playerSpawn.x * TILE_SIZE + TILE_SIZE / 2, y: playerSpawn.y * TILE_SIZE + TILE_SIZE / 2 },
+      direction: Direction.DOWN,
+      spriteIndex: 0,
+      animationFrame: 0,
+      isMoving: false,
+      health: 100,
+      maxHealth: 100,
+      score: 30,
+      isAuraFarming: false,
+      lastMoveTime: currentTime,
+    };
+    setPlayer(newPlayer);
+
+    const newStudents: Student[] = [];
+    for (let i = 0; i < NUM_STUDENTS; i++) {
+      const spawn = mapGen.findSpawnPoint();
+      const complaint = STUDENT_COMPLAINTS[Math.floor(Math.random() * STUDENT_COMPLAINTS.length)];
+      newStudents.push({
+        id: `student-${i}`,
+        position: { x: spawn.x * TILE_SIZE + TILE_SIZE / 2, y: spawn.y * TILE_SIZE + TILE_SIZE / 2 },
+        direction: Direction.DOWN,
+        spriteIndex: i + 1,
+        animationFrame: 0,
+        isMoving: false,
+        chasing: false,
+        target: null,
+        complaint,
+        groupId: null,
+        lastSeenPlayer: null,
+        communicationCooldown: 0,
+        state: StudentState.IDLE,
+        searchTarget: null,
+      });
+    }
+    setStudents(newStudents);
+
+    const newCoins: Coin[] = [];
+    for (let i = 0; i < NUM_COINS; i++) {
+      const spawn = mapGen.findSpawnPoint();
+      newCoins.push({
+        id: `coin-${i}`,
+        position: { x: spawn.x * TILE_SIZE + TILE_SIZE / 2, y: spawn.y * TILE_SIZE + TILE_SIZE / 2 },
+        collected: false,
+      });
+    }
+    setCoins(newCoins);
+
+    setGameOver(false);
+    setGameOverReason('');
+    setSurvivalTime(0);
+    keysPressed.current.clear();
+    lastDamageTime.current = 0;
+    lastEgoDecayTime.current = Date.now();
+    animationFrame.current = 0;
+    auraFarmingSoundPlayed.current = false;
+  }, []);
+
+  const startGame = useCallback(() => {
+    initializeGame();
+    setGameStarted(true);
+  }, [initializeGame]);
+
+  const restartGame = useCallback(() => {
+    initializeGame();
+    setGameStarted(true);
+  }, [initializeGame]);
+
+  const isWalkable = useCallback((x: number, y: number): boolean => {
+    const tileX = Math.floor(x / TILE_SIZE);
+    const tileY = Math.floor(y / TILE_SIZE);
+
+    if (tileX < 0 || tileX >= MAP_SIZE || tileY < 0 || tileY >= MAP_SIZE) {
+      return false;
+    }
+
+    return mapRef.current[tileY]?.[tileX] === TileType.FLOOR;
+  }, []);
+
+  const hasLineOfSight = useCallback((from: Position, to: Position): boolean => {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance > STUDENT_VIEW_DISTANCE * TILE_SIZE) return false;
+
+    const steps = Math.ceil(distance / (TILE_SIZE / 2));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = from.x + dx * t;
+      const y = from.y + dy * t;
+
+      if (!isWalkable(x, y)) return false;
+    }
+
+    return true;
+  }, [isWalkable]);
+
+  const getDistance = (pos1: Position, pos2: Position): number => {
+    const dx = pos2.x - pos1.x;
+    const dy = pos2.y - pos1.y;
+    return Math.sqrt(dx * dx + dy * dy);
   };
 
-  private bassPatterns = [
-    [0, 0, 4, 4, 0, 0, 4, 4],
-    [0, 4, 0, 5, 0, 7, 0, 5],
-    [0, 0, 5, 5, 4, 4, 2, 2],
-    [0, 2, 4, 5, 4, 2, 0, 0],
-    [0, 7, 0, 5, 0, 4, 0, 2],
-  ];
-  private currentBass: number[] = [];
+  const moveTowards = useCallback((from: Position, to: Position, speed: number, studentId?: string, allStudents?: Student[]): { position: Position; direction: Direction; isMoving: boolean } => {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
 
-  private currentMelody: number[] = [];
-
-  initialize(): void {
-    if (!this.audioContext) {
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      this.masterGain = this.audioContext.createGain();
-      this.masterGain.gain.value = 0.5;
-      this.masterGain.connect(this.audioContext.destination);
-      this.currentMelody = this.melodyPatterns[Math.floor(Math.random() * this.melodyPatterns.length)];
-      this.currentBass = this.bassPatterns[Math.floor(Math.random() * this.bassPatterns.length)];
+    if (distance < speed) {
+      return { position: { ...to }, direction: Direction.DOWN, isMoving: false };
     }
-    // Reset aura and background state on init
-    this.auraIntervalId = null;
-    this.backgroundIntervalId = null;
-    this.isAuraFarming = false;
-    this.backgroundTick = 0;
-    this.melodyIndex = 0;
-    this.bassIndex = 0;
-    this.drumIndex = 0;
-  }
 
-  start(): void {
-    if (this.isPlaying || !this.audioContext || !this.masterGain) return;
-    this.startDefaultBackground();
-  }
+    const ratio = speed / distance;
+    let newX = from.x + dx * ratio;
+    let newY = from.y + dy * ratio;
 
-  // Unified start for default background music
-  private startDefaultBackground(): void {
-    if (this.backgroundIntervalId || !this.audioContext || !this.masterGain) return;
-
-    this.isPlaying = true;
-    this.backgroundTick = 0;
-    this.melodyIndex = 0;
-    this.bassIndex = 0;
-    this.drumIndex = 0;
-
-    // Single master tick at 150ms (drum rate); others derive from tick count
-    this.backgroundIntervalId = window.setInterval(() => {
-      this.backgroundTick++;
-
-      // Drums: Every tick (150ms)
-      this.playDrumBeat();
-
-      // Melody: Every 2 ticks (300ms)
-      if (this.backgroundTick % 2 === 0) {
-        this.playMelodyNote();
+    if (studentId && allStudents) {
+      for (const other of allStudents) {
+        if (other.id === studentId) continue;
+        const distToOther = Math.sqrt(
+          Math.pow(newX - other.position.x, 2) + Math.pow(newY - other.position.y, 2)
+        );
+        if (distToOther < STUDENT_SEPARATION_DISTANCE) {
+          const avoidX = newX - other.position.x;
+          const avoidY = newY - other.position.y;
+          const avoidDist = Math.sqrt(avoidX * avoidX + avoidY * avoidY);
+          if (avoidDist > 0) {
+            newX += (avoidX / avoidDist) * speed * 0.5;
+            newY += (avoidY / avoidDist) * speed * 0.5;
+          }
+        }
       }
+    }
 
-      // Bass: Every 4 ticks (600ms)
-      if (this.backgroundTick % 4 === 0) {
-        this.playBassNote();
+    if (!isWalkable(newX, newY)) {
+      if (isWalkable(newX, from.y)) {
+        newY = from.y;
+      } else if (isWalkable(from.x, newY)) {
+        newX = from.x;
+      } else {
+        return { position: { ...from }, direction: Direction.DOWN, isMoving: false };
       }
-    }, 150);
-  }
-
-  // Unified stop for default background music
-  private stopDefaultBackground(): void {
-    this.isPlaying = false;
-
-    if (this.backgroundIntervalId) {
-      clearInterval(this.backgroundIntervalId);
-      this.backgroundIntervalId = null;
     }
 
-    this.backgroundTick = 0;
-    this.melodyIndex = 0;
-    this.bassIndex = 0;
-    this.drumIndex = 0;
+    let direction = Direction.DOWN;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      direction = dx > 0 ? Direction.RIGHT : Direction.LEFT;
+    } else {
+      direction = dy > 0 ? Direction.DOWN : Direction.UP;
+    }
 
-    this.audioSources.forEach(source => {
-      try {
-        source.stop();
-      } catch (e) {
-        // Source already stopped or invalid
+    return { position: { x: newX, y: newY }, direction, isMoving: true };
+  }, [isWalkable]);
+
+  useEffect(() => {
+    if (!gameStarted || gameOver) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+        e.preventDefault();
+        keysPressed.current.add(key);
       }
-    });
-    this.audioSources = [];
-  }
-
-  // Stop only background (now unified)
-  stopBackground(): void {
-    this.stopDefaultBackground();
-  }
-
-  // Stop ALL audio (background + aura)
-  stopAll(): void {
-    this.stopDefaultBackground();
-
-    if (this.auraIntervalId) {
-      clearInterval(this.auraIntervalId);
-      this.auraIntervalId = null;
-    }
-    this.isAuraFarming = false;
-
-    // Double-check sources (in case aura added any)
-    this.audioSources.forEach(source => {
-      try {
-        source.stop();
-      } catch (e) {
-        // Source already stopped or invalid
-      }
-    });
-    this.audioSources = [];
-  }
-
-  private playMelodyNote(): void {
-    if (!this.audioContext || !this.masterGain) return;
-
-    const noteIndex = this.currentMelody[this.melodyIndex % this.currentMelody.length];
-    const frequency = this.scale[noteIndex];
-
-    const osc = this.audioContext.createOscillator();
-    const gain = this.audioContext.createGain();
-
-    osc.type = 'square';
-    osc.frequency.value = frequency;
-
-    gain.gain.value = 0.25;
-    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.25);
-
-    osc.connect(gain);
-    gain.connect(this.masterGain);
-
-    osc.start();
-    osc.stop(this.audioContext.currentTime + 0.25);
-
-    this.audioSources.push(osc);
-    this.melodyIndex++;
-
-    if (this.melodyIndex >= this.currentMelody.length * 2) {
-      this.currentMelody = this.melodyPatterns[Math.floor(Math.random() * this.melodyPatterns.length)];
-      this.melodyIndex = 0;
-    }
-  }
-
-  private playDrumBeat(): void {
-    if (!this.audioContext || !this.masterGain) return;
-
-    const step = this.drumIndex % 8;
-
-    if (this.drumPatterns.kick[step]) this.playKick();
-    if (this.drumPatterns.snare[step]) this.playSnare();
-    if (this.drumPatterns.hat[step]) this.playHat();
-
-    this.drumIndex++;
-  }
-
-  private playBassNote(): void {
-    if (!this.audioContext || !this.masterGain) return;
-
-    const noteIndex = this.currentBass[this.bassIndex % this.currentBass.length];
-    const frequency = this.scale[noteIndex] / 2;
-
-    const osc = this.audioContext.createOscillator();
-    const gain = this.audioContext.createGain();
-
-    osc.type = 'sawtooth';
-    osc.frequency.value = frequency;
-
-    gain.gain.value = 0.2;
-    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
-
-    osc.connect(gain);
-    gain.connect(this.masterGain);
-
-    osc.start();
-    osc.stop(this.audioContext.currentTime + 0.5);
-
-    this.audioSources.push(osc);
-    this.bassIndex++;
-  }
-
-  private playKick(): void {
-    if (!this.audioContext || !this.masterGain) return;
-
-    const osc = this.audioContext.createOscillator();
-    const gain = this.audioContext.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(150, this.audioContext.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.5);
-
-    gain.gain.setValueAtTime(0.8, this.audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
-
-    osc.connect(gain);
-    gain.connect(this.masterGain);
-
-    osc.start();
-    osc.stop(this.audioContext.currentTime + 0.5);
-
-    this.audioSources.push(osc);
-  }
-
-  private playSnare(): void {
-    if (!this.audioContext || !this.masterGain) return;
-
-    const bufferSize = this.audioContext.sampleRate * 0.2;
-    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
-    const data = buffer.getChannelData(0);
-
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1; // white noise
-    }
-
-    const noise = this.audioContext.createBufferSource();
-    noise.buffer = buffer;
-
-    const gain = this.audioContext.createGain();
-    gain.gain.setValueAtTime(0.4, this.audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
-
-    noise.connect(gain);
-    gain.connect(this.masterGain);
-
-    noise.start();
-    noise.stop(this.audioContext.currentTime + 0.2);
-
-    this.audioSources.push(noise);
-  }
-
-  private playHat(): void {
-    if (!this.audioContext || !this.masterGain) return;
-
-    const bufferSize = this.audioContext.sampleRate * 0.05;
-    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
-    const data = buffer.getChannelData(0);
-
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
-    }
-
-    const noise = this.audioContext.createBufferSource();
-    noise.buffer = buffer;
-
-    const highpass = this.audioContext.createBiquadFilter();
-    highpass.type = "highpass";
-    highpass.frequency.value = 5000;
-
-    const bandpass = this.audioContext.createBiquadFilter();
-    bandpass.type = "bandpass";
-    bandpass.frequency.value = 10000;
-
-    const gain = this.audioContext.createGain();
-    gain.gain.setValueAtTime(0.2, this.audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
-
-    noise.connect(bandpass);
-    bandpass.connect(gain);
-    gain.connect(this.masterGain);
-
-    noise.start();
-    noise.stop(this.audioContext.currentTime + 0.1);
-
-    this.audioSources.push(noise);
-  }
-
-  playCollectSound(): void {
-    if (!this.audioContext || !this.masterGain) return;
-
-    const osc = this.audioContext.createOscillator();
-    const gain = this.audioContext.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.value = 523.25;
-    osc.frequency.exponentialRampToValueAtTime(1046.5, this.audioContext.currentTime + 0.1);
-
-    gain.gain.value = 0.2;
-    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.15);
-
-    osc.connect(gain);
-    gain.connect(this.masterGain);
-
-    osc.start();
-    osc.stop(this.audioContext.currentTime + 0.15);
-
-    this.audioSources.push(osc);
-  }
-
-  playHitSound(): void {
-    if (!this.audioContext || !this.masterGain) return;
-
-    const osc = this.audioContext.createOscillator();
-    const gain = this.audioContext.createGain();
-
-    osc.type = 'sawtooth';
-    osc.frequency.value = 120;
-    osc.frequency.exponentialRampToValueAtTime(60, this.audioContext.currentTime + 0.2);
-
-    gain.gain.value = 0.3;
-    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
-
-    osc.connect(gain);
-    gain.connect(this.masterGain);
-
-    osc.start();
-    osc.stop(this.audioContext.currentTime + 0.2);
-
-    this.audioSources.push(osc);
-  }
-
-  // 🔥 Aura farming start
-  playAuraFarmingIntro(): void {
-    if (!this.audioContext || !this.masterGain) return;
-    if (this.isAuraFarming) return; // already playing
-
-    this.stopBackground(); // stop background only (now unified)
-    this.isAuraFarming = true;
-
-    const now = this.audioContext.currentTime;
-
-    // Big chord stab
-    const chord = [110, 220, 329.63];
-    chord.forEach(freq => {
-      const osc = this.audioContext!.createOscillator();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(freq, now);
-
-      const gain = this.audioContext!.createGain();
-      gain.gain.setValueAtTime(0.6, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
-
-      osc.connect(gain);
-      gain.connect(this.masterGain!);
-
-      osc.start(now);
-      osc.stop(now + 2.5);
-      this.audioSources.push(osc); // Track for cleanup
-    });
-
-    // Punch kick
-    const kick = this.audioContext.createOscillator();
-    kick.type = 'sine';
-    kick.frequency.setValueAtTime(120, now);
-    kick.frequency.exponentialRampToValueAtTime(40, now + 0.5);
-
-    const kickGain = this.audioContext.createGain();
-    kickGain.gain.setValueAtTime(1.0, now);
-    kickGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
-
-    kick.connect(kickGain);
-    kickGain.connect(this.masterGain!);
-    kick.start(now);
-    kick.stop(now + 0.5);
-    this.audioSources.push(kick); // Track for cleanup
-
-    // Start looping boss theme after intro
-    this.auraIntervalId = window.setInterval(() => this.playAuraFarmingLoop(), 400);
-  }
-
-  // 🔁 Boss theme loop
-  private playAuraFarmingLoop(): void {
-    if (!this.audioContext || !this.masterGain || !this.isAuraFarming) return;
-
-    const now = this.audioContext.currentTime;
-
-    // Driving bass note
-    const bass = this.audioContext.createOscillator();
-    bass.type = "sawtooth";
-    bass.frequency.setValueAtTime(110, now);
-
-    const bassGain = this.audioContext.createGain();
-    bassGain.gain.setValueAtTime(0.25, now);
-    bassGain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-
-    bass.connect(bassGain);
-    bassGain.connect(this.masterGain!);
-    bass.start(now);
-    bass.stop(now + 0.35);
-    this.audioSources.push(bass); // Track for cleanup
-
-    // Snare-like noise
-    const bufferSize = this.audioContext.sampleRate * 0.1;
-    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
-    }
-
-    const noise = this.audioContext.createBufferSource();
-    noise.buffer = buffer;
-
-    const noiseGain = this.audioContext.createGain();
-    noiseGain.gain.setValueAtTime(0.2, now);
-    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-
-    noise.connect(noiseGain);
-    noiseGain.connect(this.masterGain!);
-    noise.start(now);
-    noise.stop(now + 0.1);
-    this.audioSources.push(noise); // Track for cleanup
-  }
-
-  // ❌ End aura farming, resume normal background
-  stopAuraFarming(): void {
-    if (this.auraIntervalId) {
-      clearInterval(this.auraIntervalId);
-      this.auraIntervalId = null;
-    }
-    this.isAuraFarming = false;
-
-    // Resume background beats (unified)
-    this.start();
-  }
-}
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      keysPressed.current.delete(key);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [gameStarted, gameOver]);
+
+  useEffect(() => {
+    if (!gameStarted || gameOver || !player) return;
+
+    const gameLoop = setInterval(() => {
+      animationFrame.current++;
+      const currentTime = animationFrame.current / 60;
+      const minutesPassed = Math.floor(currentTime / 60);
+      const speedMultiplier = 1 + (minutesPassed * SPEED_INCREASE_PER_MINUTE);
+      const currentMoveSpeed = BASE_MOVE_SPEED * speedMultiplier;
+      const currentStudentSpeed = BASE_STUDENT_SPEED * speedMultiplier;
+
+      setSurvivalTime(t => t + 1);
+
+      setPlayer(prevPlayer => {
+        if (!prevPlayer) return prevPlayer;
+
+        let newPlayer = { ...prevPlayer };
+        let dx = 0;
+        let dy = 0;
+
+        if (keysPressed.current.has('w') || keysPressed.current.has('arrowup')) dy -= currentMoveSpeed;
+        if (keysPressed.current.has('s') || keysPressed.current.has('arrowdown')) dy += currentMoveSpeed;
+        if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) dx -= currentMoveSpeed;
+        if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) dx += currentMoveSpeed;
+
+        const currentTime = Date.now();
+
+        if (dx !== 0 || dy !== 0) {
+          const newX = prevPlayer.position.x + dx;
+          const newY = prevPlayer.position.y + dy;
+
+          if (isWalkable(newX, newY)) {
+            newPlayer.position = { x: newX, y: newY };
+            newPlayer.isMoving = true;
+            newPlayer.lastMoveTime = currentTime;
+
+            if (prevPlayer.isAuraFarming) {
+              newPlayer.isAuraFarming = false;
+              auraFarmingSoundPlayed.current = false;
+            }
+
+            if (Math.abs(dx) > Math.abs(dy)) {
+              newPlayer.direction = dx > 0 ? Direction.RIGHT : Direction.LEFT;
+            } else {
+              newPlayer.direction = dy > 0 ? Direction.DOWN : Direction.UP;
+            }
+
+            if (animationFrame.current % ANIMATION_SPEED === 0) {
+              newPlayer.animationFrame = (prevPlayer.animationFrame + 1) % 3;
+            }
+          }
+        } else {
+          newPlayer.isMoving = false;
+          newPlayer.animationFrame = 0;
+
+          const timeSinceLastMove = (currentTime - prevPlayer.lastMoveTime) / 1000;
+          if (timeSinceLastMove >= AURA_FARMING_DELAY && !prevPlayer.isAuraFarming) {
+            newPlayer.isAuraFarming = true;
+            if (!auraFarmingSoundPlayed.current) {
+              audioEngineRef.current.playAuraFarmingSound();
+              auraFarmingSoundPlayed.current = true;
+            }
+          }
+
+          if (newPlayer.isAuraFarming && animationFrame.current % 60 === 0) {
+            newPlayer.score += AURA_FARMING_GAIN;
+            newPlayer.health -= 2;
+            audioEngineRef.current.playAuraFarmingSound();
+          }
+        }
+
+        if (newPlayer.health < newPlayer.maxHealth) {
+          newPlayer.health = Math.min(newPlayer.maxHealth, newPlayer.health + HEALTH_REGEN_RATE / 60);
+        }
+
+        const egoTimePassed = (currentTime - lastEgoDecayTime.current) / 1000;
+        if (egoTimePassed >= 1) {
+          newPlayer.score = Math.max(0, newPlayer.score - EGO_DECAY_RATE);
+          lastEgoDecayTime.current = currentTime;
+
+          if (newPlayer.score <= 0) {
+            setGameOver(true);
+            setGameOverReason('You lost your self-esteem!');
+          }
+        }
+
+        return newPlayer;
+      });
+
+      setStudents(prevStudents => {
+        if (!player) return prevStudents;
+
+        const updatedStudents = prevStudents.map(student => {
+          const newStudent = { ...student };
+
+          newStudent.communicationCooldown = Math.max(0, newStudent.communicationCooldown - 1);
+
+          const canSeePlayer = player.isAuraFarming || hasLineOfSight(student.position, player.position);
+
+          if (canSeePlayer) {
+            newStudent.chasing = true;
+            newStudent.state = StudentState.CHASING;
+            newStudent.lastSeenPlayer = { ...player.position };
+            newStudent.target = { ...player.position };
+            newStudent.searchTarget = null;
+
+            if (newStudent.groupId) {
+              prevStudents.forEach(other => {
+                if (other.groupId === newStudent.groupId && other.id !== student.id) {
+                  other.state = StudentState.CHASING;
+                  other.chasing = true;
+                  other.lastSeenPlayer = { ...player.position };
+                  other.target = { ...player.position };
+                }
+              });
+            }
+          } else if (newStudent.state === StudentState.CHASING && newStudent.lastSeenPlayer) {
+            const distToLastSeen = getDistance(student.position, newStudent.lastSeenPlayer);
+            if (distToLastSeen < TILE_SIZE * 2) {
+              let nearestStudent: Student | null = null;
+              let nearestDist = Infinity;
+
+              prevStudents.forEach(other => {
+                if (other.id !== student.id) {
+                  const dist = getDistance(student.position, other.position);
+                  if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearestStudent = other;
+                  }
+                }
+              });
+
+              if (nearestStudent && nearestDist < COMMUNICATION_RANGE * TILE_SIZE) {
+                const groupId = `group-${Date.now()}-${student.id}`;
+                newStudent.groupId = groupId;
+                newStudent.state = StudentState.INFORMED;
+                newStudent.target = nearestStudent.position;
+                newStudent.chasing = false;
+
+                nearestStudent.groupId = groupId;
+                nearestStudent.state = StudentState.INFORMED;
+              } else {
+                newStudent.state = StudentState.SEARCHING;
+                newStudent.chasing = false;
+                const randomAngle = Math.random() * Math.PI * 2;
+                const searchDist = TILE_SIZE * 5;
+                newStudent.searchTarget = {
+                  x: student.position.x + Math.cos(randomAngle) * searchDist,
+                  y: student.position.y + Math.sin(randomAngle) * searchDist,
+                };
+                newStudent.target = newStudent.searchTarget;
+              }
+            }
+          } else if (newStudent.state === StudentState.INFORMED) {
+            let anyChasing = false;
+            prevStudents.forEach(other => {
+              if (other.groupId === newStudent.groupId && other.state === StudentState.CHASING) {
+                anyChasing = true;
+                newStudent.state = StudentState.CHASING;
+                newStudent.chasing = true;
+                newStudent.lastSeenPlayer = other.lastSeenPlayer;
+                newStudent.target = other.target;
+              }
+            });
+
+            if (!anyChasing && newStudent.groupId) {
+              const groupMembers = prevStudents.filter(s => s.groupId === newStudent.groupId && s.id !== student.id);
+              if (groupMembers.length > 0) {
+                if (animationFrame.current % 120 === 0) {
+                  const randomAngle = Math.random() * Math.PI * 2;
+                  const searchDist = TILE_SIZE * 4;
+                  newStudent.target = {
+                    x: student.position.x + Math.cos(randomAngle) * searchDist,
+                    y: student.position.y + Math.sin(randomAngle) * searchDist,
+                  };
+                } else if (!newStudent.target) {
+                  const randomMember = groupMembers[Math.floor(Math.random() * groupMembers.length)];
+                  newStudent.target = randomMember.position;
+                }
+              }
+            }
+          } else if (newStudent.state === StudentState.SEARCHING && newStudent.searchTarget) {
+            const distToSearch = getDistance(student.position, newStudent.searchTarget);
+            if (distToSearch < TILE_SIZE * 2) {
+              const randomAngle = Math.random() * Math.PI * 2;
+              const searchDist = TILE_SIZE * 5;
+              newStudent.searchTarget = {
+                x: student.position.x + Math.cos(randomAngle) * searchDist,
+                y: student.position.y + Math.sin(randomAngle) * searchDist,
+              };
+              newStudent.target = newStudent.searchTarget;
+            }
+          }
+
+          if (newStudent.communicationCooldown === 0 && newStudent.state === StudentState.CHASING) {
+            prevStudents.forEach(other => {
+              if (other.id !== student.id && other.state !== StudentState.CHASING) {
+                const dist = getDistance(student.position, other.position);
+                if (dist < COMMUNICATION_RANGE * TILE_SIZE) {
+                  const groupId = newStudent.groupId || `group-${Date.now()}-${student.id}`;
+                  other.groupId = groupId;
+                  newStudent.groupId = groupId;
+                  other.state = StudentState.INFORMED;
+                  newStudent.communicationCooldown = 120;
+                }
+              }
+            });
+          }
+
+          if (newStudent.target) {
+            const studentSpeed = player.isAuraFarming ? currentStudentSpeed * 2 : currentStudentSpeed;
+            const result = moveTowards(student.position, newStudent.target, studentSpeed, student.id, prevStudents);
+            newStudent.position = result.position;
+            newStudent.direction = result.direction;
+            newStudent.isMoving = result.isMoving;
+
+            if (animationFrame.current % ANIMATION_SPEED === 0 && newStudent.isMoving) {
+              newStudent.animationFrame = (student.animationFrame + 1) % 3;
+            }
+          } else {
+            newStudent.isMoving = false;
+            newStudent.animationFrame = 0;
+          }
+
+          const distToPlayer = getDistance(student.position, player.position);
+          if (distToPlayer < TILE_SIZE && Date.now() - lastDamageTime.current > DAMAGE_COOLDOWN) {
+            setPlayer(p => {
+              if (!p) return p;
+              const newHealth = p.health - STUDENT_DAMAGE;
+              if (newHealth <= 0) {
+                setGameOver(true);
+                setGameOverReason('You were overwhelmed by student requests!');
+              }
+              lastDamageTime.current = Date.now();
+              audioEngineRef.current.playHitSound();
+              return { ...p, health: Math.max(0, newHealth) };
+            });
+          }
+
+          return newStudent;
+        });
+
+        return updatedStudents;
+      });
+
+      setCoins(prevCoins => {
+        if (!player || !mapGeneratorRef.current) return prevCoins;
+
+        const updatedCoins = prevCoins.map(coin => {
+          if (coin.collected) return coin;
+
+          const dist = getDistance(player.position, coin.position);
+          if (dist < TILE_SIZE) {
+            setPlayer(p => {
+              if (!p) return p;
+              const newHealth = Math.min(p.maxHealth, p.health + COIN_HEALTH_BOOST);
+              return { ...p, score: p.score + COIN_VALUE, health: newHealth };
+            });
+            audioEngineRef.current.playCollectSound();
+            return { ...coin, collected: true };
+          }
+          return coin;
+        });
+
+        if (animationFrame.current % 180 === 0) {
+          return updatedCoins.map(coin => {
+            if (coin.collected) {
+              const spawn = mapGeneratorRef.current!.findSpawnPoint();
+              return {
+                ...coin,
+                position: { x: spawn.x * TILE_SIZE + TILE_SIZE / 2, y: spawn.y * TILE_SIZE + TILE_SIZE / 2 },
+                collected: false,
+              };
+            }
+            return coin;
+          });
+        }
+
+        return updatedCoins;
+      });
+    }, 1000 / 60);
+
+    return () => clearInterval(gameLoop);
+  }, [gameStarted, gameOver, player, isWalkable, hasLineOfSight, moveTowards]);
+
+  return {
+    gameMap,
+    player,
+    students,
+    coins,
+    gameStarted,
+    gameOver,
+    gameOverReason,
+    survivalTime,
+    startGame,
+    restartGame,
+    TILE_SIZE,
+    MAP_SIZE,
+  };
+};
