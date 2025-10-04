@@ -299,6 +299,7 @@ export const useGameState = () => {
 
           if (newPlayer.isAuraFarming && animationFrame.current % 60 === 0) {
             newPlayer.score += AURA_FARMING_GAIN;
+            newPlayer.health = Math.min(newPlayer.maxHealth, newPlayer.health - HEALTH_REGEN_RATE / 60);
           }
         }
 
