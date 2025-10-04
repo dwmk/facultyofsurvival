@@ -13,7 +13,7 @@ interface GameCanvasProps {
 
 const VIEWPORT_WIDTH = 800;
 const VIEWPORT_HEIGHT = 600;
-const SPRITE_URL = 'https://dwmk.github.io/delta-telekom/Assets/spritesheet.png';
+const SPRITE_URL = 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_freeschooluniforms.png';
 
 export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize }: GameCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
