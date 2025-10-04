@@ -46,7 +46,7 @@ export const GameOverScreen = ({ score, survivalTime, onRestart }: GameOverScree
         </button>
 
         <p className="text-center text-gray-400 mt-4 text-sm">
-          You were overwhelmed by student requests!
+          You were overwhelmed by students' requests!
         </p>
       </div>
     </div>
