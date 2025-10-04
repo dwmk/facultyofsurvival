@@ -12,12 +12,12 @@ const ANIMATION_SPEED = 10;
 const HEALTH_REGEN_RATE = 0.5;
 const STUDENT_DAMAGE = 5;
 const DAMAGE_COOLDOWN = 60;
-const NUM_STUDENTS = 5;
+const NUM_STUDENTS = 7;
 const NUM_COINS = 30;
 const COIN_VALUE = 10;
 const COIN_HEALTH_BOOST = 5;
 const STUDENT_VIEW_DISTANCE = 10;
-const COMMUNICATION_RANGE = 8;
+const COMMUNICATION_RANGE = 10;
 const SPEED_INCREASE_PER_MINUTE = 0.1;
 const AURA_FARMING_DELAY = 5;
 const AURA_FARMING_GAIN = 10;
@@ -41,7 +41,6 @@ export const useGameState = () => {
   const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
   const lastEgoDecayTime = useRef<number>(0);
   const mapGeneratorRef = useRef<MapGenerator | null>(null);
-  const auraFarmingSoundPlayed = useRef<boolean>(false);
 
   const initializeGame = useCallback(() => {
     const mapGen = new MapGenerator(MAP_SIZE, MAP_SIZE);
@@ -108,7 +107,7 @@ export const useGameState = () => {
     lastDamageTime.current = 0;
     lastEgoDecayTime.current = Date.now();
     animationFrame.current = 0;
-    auraFarmingSoundPlayed.current = false;
+    audioEngineRef.current.setBossMode(false);
   }, []);
 
   const startGame = useCallback(() => {
@@ -271,7 +270,7 @@ export const useGameState = () => {
 
             if (prevPlayer.isAuraFarming) {
               newPlayer.isAuraFarming = false;
-              auraFarmingSoundPlayed.current = false;
+              audioEngineRef.current.setBossMode(false);
             }
 
             if (Math.abs(dx) > Math.abs(dy)) {
@@ -291,16 +290,12 @@ export const useGameState = () => {
           const timeSinceLastMove = (currentTime - prevPlayer.lastMoveTime) / 1000;
           if (timeSinceLastMove >= AURA_FARMING_DELAY && !prevPlayer.isAuraFarming) {
             newPlayer.isAuraFarming = true;
-            if (!auraFarmingSoundPlayed.current) {
-              audioEngineRef.current.playAuraFarmingSound();
-              auraFarmingSoundPlayed.current = true;
-            }
+            audioEngineRef.current.setBossMode(true);
           }
 
           if (newPlayer.isAuraFarming && animationFrame.current % 60 === 0) {
             newPlayer.score += AURA_FARMING_GAIN;
-            newPlayer.health -= 1;
-            audioEngineRef.current.playAuraFarmingSound();
+            newPlayer.health -= 2;
           }
         }
 
@@ -316,6 +311,7 @@ export const useGameState = () => {
           if (newPlayer.score <= 0) {
             setGameOver(true);
             setGameOverReason('You lost your self-esteem!');
+            audioEngineRef.current.setBossMode(false);
           }
         }
 
@@ -465,6 +461,7 @@ export const useGameState = () => {
               if (newHealth <= 0) {
                 setGameOver(true);
                 setGameOverReason('You were overwhelmed by student requests!');
+                audioEngineRef.current.setBossMode(false);
               }
               lastDamageTime.current = Date.now();
               audioEngineRef.current.playHitSound();

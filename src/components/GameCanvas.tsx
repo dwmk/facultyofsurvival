@@ -13,7 +13,7 @@ interface GameCanvasProps {
 
 const VIEWPORT_WIDTH = 800;
 const VIEWPORT_HEIGHT = 600;
-const SPRITE_URL = 'https://dwmk.github.io/delta-telekom/Assets/spritesheet.png';
+const SPRITE_URL = 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_freeschooluniforms.png';
 
 export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize }: GameCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -32,6 +32,8 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
 
     loadSprites();
   }, []);
+
+  
 
   useEffect(() => {
   let interval: NodeJS.Timeout | null = null;
@@ -97,6 +99,24 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
     if (!ctx) return;
 
     ctx.imageSmoothingEnabled = false;
+    // add shadow below character sprites
+    const drawShadow = (ctx: CanvasRenderingContext2D, spriteX: number, spriteY: number, scale: number = 2.5) => {
+  const w = 32 * scale; // Sprite width after scaling
+  const h = 32 * scale; // Sprite height after scaling
+
+  const shadowX = spriteX + w / 2; // Center horizontally
+  const shadowY = spriteY + h + 2; // Below the sprite by 2px
+
+  const shadowWidth = w * 0.7; // Slightly wider than sprite
+  const shadowHeight = h * 0.2; // Flat oval
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; // Semi-transparent black
+  ctx.beginPath();
+  ctx.ellipse(shadowX, shadowY, shadowWidth / 2, shadowHeight / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+};
 
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
@@ -166,12 +186,14 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
 
     if (spritesLoadedRef.current) {
       students.forEach(student => {
-        const screenX = student.position.x - cameraX - 39;
-        const screenY = student.position.y - cameraY - 54;
+        const screenX = student.position.x - cameraX - 40;
+        const screenY = student.position.y - cameraY - 40;
 
         if (screenX < -100 || screenX > VIEWPORT_WIDTH + 100 || screenY < -100 || screenY > VIEWPORT_HEIGHT + 100) {
           return;
         }
+
+        drawShadow(ctx, screenX, screenY, 2.5);
 
         spriteLoaderRef.current.drawSprite(
           ctx,
@@ -181,7 +203,7 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
           student.isMoving,
           screenX,
           screenY,
-          1
+          2.5
         );
 
         if (student.state === StudentState.CHASING || student.state === StudentState.INFORMED) {
@@ -209,7 +231,7 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
           const padding = 8;
           const bubbleWidth = Math.min(maxWidth + padding * 2, 200);
           const bubbleHeight = lines.length * lineHeight + padding * 2;
-          const bubbleX = screenX + 39 - bubbleWidth / 2;
+          const bubbleX = screenX + 40 - bubbleWidth / 2;
           const bubbleY = screenY - bubbleHeight - 15;
 
           ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
@@ -240,8 +262,10 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
         }
       });
 
-      const playerScreenX = player.position.x - cameraX - 39;
-      const playerScreenY = player.position.y - cameraY - 54;
+      const playerScreenX = player.position.x - cameraX - 40;
+      const playerScreenY = player.position.y - cameraY - 40;
+
+      drawShadow(ctx, playerScreenX, playerScreenY, 2.5);
 
       spriteLoaderRef.current.drawSprite(
         ctx,
@@ -251,7 +275,7 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
         player.isMoving,
         playerScreenX,
         playerScreenY,
-        1
+        2.5
       );
 
       if (player.isAuraFarming) {
@@ -276,7 +300,7 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
         gradient.addColorStop(1, 'rgba(168, 85, 247, 0.3)');
 
         ctx.fillStyle = gradient;
-        ctx.fillText('AURA FARMING', playerScreenX + 39, playerScreenY - 20);
+        ctx.fillText('AURA FARMING', playerScreenX + 40, playerScreenY - 20);
 
         ctx.restore();
       }
