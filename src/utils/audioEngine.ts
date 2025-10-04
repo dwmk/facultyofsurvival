@@ -2,6 +2,7 @@ export class AudioEngine {
 private audioContext: AudioContext | null = null;
 private masterGain: GainNode | null = null;
 private bitcrusher: ScriptProcessorNode | null = null;
+private bossMode: boolean = false;
 private oscillators: OscillatorNode[] = [];
 private isPlaying = false;
 private melodyIndex = 0;
@@ -92,6 +93,11 @@ osc.stop();
 });
 this.oscillators = [];
 }
+
+toggleBossMode(): void {
+  this.bossMode = !this.bossMode;
+}
+  
 private playBackgroundBeat(): void {
 if (!this.isPlaying || !this.audioContext || !this.masterGain) return;
 const step = this.drumIndex % 8;
@@ -124,7 +130,7 @@ gain.gain.value = 0.25;
 gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.25);
 osc.connect(filter);
 filter.connect(gain);
-gain.connect(this.bitcrusher);
+gain.connect(this.bossMode ? this.masterGain : this.bitcrusher);
 osc.start();
 osc.stop(this.audioContext.currentTime + 0.25);
 this.oscillators.push(osc);
@@ -149,7 +155,7 @@ gain.gain.value = 0.2;
 gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
 osc.connect(filter);
 filter.connect(gain);
-gain.connect(this.bitcrusher);
+gain.connect(this.bossMode ? this.masterGain : this.bitcrusher);
 osc.start();
 osc.stop(this.audioContext.currentTime + 0.5);
 this.oscillators.push(osc);
@@ -168,7 +174,7 @@ osc.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0
 gain.gain.setValueAtTime(0.8, this.audioContext.currentTime);
 gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
 osc.connect(gain);
-gain.connect(this.bitcrusher);
+gain.connect(this.bossMode ? this.masterGain : this.bitcrusher);
 osc.start();
 osc.stop(this.audioContext.currentTime + 0.5);
 }
@@ -185,7 +191,7 @@ const gain = this.audioContext.createGain();
 gain.gain.setValueAtTime(0.4, this.audioContext.currentTime);
 gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
 noise.connect(gain);
-gain.connect(this.bitcrusher);
+gain.connect(this.bossMode ? this.masterGain : this.bitcrusher);
 noise.start();
 noise.stop(this.audioContext.currentTime + 0.2);
 }
@@ -209,7 +215,7 @@ gain.gain.setValueAtTime(0.2, this.audioContext.currentTime);
 gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
 noise.connect(bandpass);
 bandpass.connect(gain);
-gain.connect(this.bitcrusher);
+gain.connect(this.bossMode ? this.masterGain : this.bitcrusher);
 noise.start();
 noise.stop(this.audioContext.currentTime + 0.1);
 }
