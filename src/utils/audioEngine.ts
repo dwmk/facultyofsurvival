@@ -19,7 +19,7 @@ export class AudioEngine {
     [0, 4, 2, 5, 0, 4, 2, 7],
   ];
 
-    private drumPatterns = {
+  private drumPatterns = {
     kick: [1, 0, 0, 0, 1, 0, 0, 0],   // on the "1"
     snare: [0, 0, 1, 0, 0, 0, 1, 0],  // on 2 & 4
     hat:   [1, 1, 1, 1, 1, 1, 1, 1],  // every beat
@@ -29,13 +29,13 @@ export class AudioEngine {
   private drumIntervalId: number | null = null;
 
   private bassPatterns = [
-  [0, 0, 4, 4, 0, 0, 4, 4],
-  [0, 4, 0, 5, 0, 7, 0, 5],
-  [0, 0, 5, 5, 4, 4, 2, 2],
-  [0, 2, 4, 5, 4, 2, 0, 0],
-  [0, 7, 0, 5, 0, 4, 0, 2],
-];
-private currentBass: number[] = [];
+    [0, 0, 4, 4, 0, 0, 4, 4],
+    [0, 4, 0, 5, 0, 7, 0, 5],
+    [0, 0, 5, 5, 4, 4, 2, 2],
+    [0, 2, 4, 5, 4, 2, 0, 0],
+    [0, 7, 0, 5, 0, 4, 0, 2],
+  ];
+  private currentBass: number[] = [];
 
   private currentMelody: number[] = [];
 
@@ -48,9 +48,12 @@ private currentBass: number[] = [];
       this.currentMelody = this.melodyPatterns[Math.floor(Math.random() * this.melodyPatterns.length)];
       this.currentBass = this.bassPatterns[Math.floor(Math.random() * this.bassPatterns.length)];
     }
+    // Reset aura state on init
+    this.auraIntervalId = null;
+    this.isAuraFarming = false;
   }
 
-   start(): void {
+  start(): void {
     if (this.isPlaying || !this.audioContext || !this.masterGain) return;
 
     this.isPlaying = true;
@@ -68,8 +71,8 @@ private currentBass: number[] = [];
     this.drumIntervalId = window.setInterval(() => this.playDrumBeat(), 150); // fast ticks
   }
 
-
-  stop(): void {
+  // Stop only background (melody, bass, drums)
+  stopBackground(): void {
     this.isPlaying = false;
 
     if (this.melodyIntervalId) {
@@ -87,6 +90,27 @@ private currentBass: number[] = [];
       this.drumIntervalId = null;
     }
 
+    this.oscillators.forEach(osc => {
+      try {
+        osc.stop();
+      } catch (e) {
+        // Oscillator already stopped
+      }
+    });
+    this.oscillators = [];
+  }
+
+  // Stop ALL audio (background + aura)
+  stopAll(): void {
+    this.stopBackground();
+
+    if (this.auraIntervalId) {
+      clearInterval(this.auraIntervalId);
+      this.auraIntervalId = null;
+    }
+    this.isAuraFarming = false;
+
+    // Double-check oscillators (in case aura added any)
     this.oscillators.forEach(osc => {
       try {
         osc.stop();
@@ -139,7 +163,6 @@ private currentBass: number[] = [];
     this.drumIndex++;
   }
 
-
   private playBassNote(): void {
     if (!this.audioContext || !this.masterGain) return;
 
@@ -165,7 +188,7 @@ private currentBass: number[] = [];
     this.bassIndex++;
   }
 
-    private playKick(): void {
+  private playKick(): void {
     if (!this.audioContext || !this.masterGain) return;
 
     const osc = this.audioContext.createOscillator();
@@ -232,7 +255,6 @@ private currentBass: number[] = [];
     bandpass.type = "bandpass";
     bandpass.frequency.value = 10000;
 
-
     const gain = this.audioContext.createGain();
     gain.gain.setValueAtTime(0.2, this.audioContext.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
@@ -244,7 +266,6 @@ private currentBass: number[] = [];
     noise.start();
     noise.stop(this.audioContext.currentTime + 0.1);
   }
-
 
   playCollectSound(): void {
     if (!this.audioContext || !this.masterGain) return;
@@ -286,12 +307,12 @@ private currentBass: number[] = [];
     osc.stop(this.audioContext.currentTime + 0.2);
   }
 
-// 🔥 Aura farming start
+  // 🔥 Aura farming start
   playAuraFarmingIntro(): void {
     if (!this.audioContext || !this.masterGain) return;
     if (this.isAuraFarming) return; // already playing
 
-    this.stop(); // stop background
+    this.stopBackground(); // stop background only
     this.isAuraFarming = true;
 
     const now = this.audioContext.currentTime;
@@ -312,6 +333,7 @@ private currentBass: number[] = [];
 
       osc.start(now);
       osc.stop(now + 2.5);
+      this.oscillators.push(osc); // Track for cleanup
     });
 
     // Punch kick
@@ -328,6 +350,7 @@ private currentBass: number[] = [];
     kickGain.connect(this.masterGain!);
     kick.start(now);
     kick.stop(now + 0.5);
+    this.oscillators.push(kick); // Track for cleanup
 
     // Start looping boss theme after intro
     this.auraIntervalId = window.setInterval(() => this.playAuraFarmingLoop(), 400);
@@ -335,7 +358,7 @@ private currentBass: number[] = [];
 
   // 🔁 Boss theme loop
   private playAuraFarmingLoop(): void {
-    if (!this.audioContext || !this.masterGain) return;
+    if (!this.audioContext || !this.masterGain || !this.isAuraFarming) return;
 
     const now = this.audioContext.currentTime;
 
@@ -352,6 +375,7 @@ private currentBass: number[] = [];
     bassGain.connect(this.masterGain!);
     bass.start(now);
     bass.stop(now + 0.35);
+    this.oscillators.push(bass); // Track for cleanup
 
     // Snare-like noise
     const bufferSize = this.audioContext.sampleRate * 0.1;
@@ -385,5 +409,4 @@ private currentBass: number[] = [];
     // Resume background beats
     this.start();
   }
-
 }
