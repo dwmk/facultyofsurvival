@@ -288,6 +288,8 @@ export const useGameState = () => {
           newPlayer.isMoving = false;
           newPlayer.animationFrame = 0;
 
+          const timeSinceLastMove = (Date.now() - prevPlayer.lastMoveTime) / 1000; // seconds
+
           // Detect aura farming start
           if (timeSinceLastMove >= AURA_FARMING_DELAY && !prevPlayer.isAuraFarming) {
             newPlayer.isAuraFarming = true;
