@@ -1,6 +1,7 @@
 export class AudioEngine {
 private audioContext: AudioContext | null = null;
 private masterGain: GainNode | null = null;
+private bitcrusher: ScriptProcessorNode | null = null;
 private oscillators: OscillatorNode[] = [];
 private isPlaying = false;
 private melodyIndex = 0;
@@ -38,9 +39,34 @@ this.audioContext = new (window.AudioContext || (window as any).webkitAudioConte
 this.masterGain = this.audioContext.createGain();
 this.masterGain.gain.value = 0.5;
 this.masterGain.connect(this.audioContext.destination);
+this.bitcrusher = this.createBitcrusher();
+this.bitcrusher.connect(this.masterGain);
 this.currentMelody = this.melodyPatterns[Math.floor(Math.random() * this.melodyPatterns.length)];
 this.currentBass = this.bassPatterns[Math.floor(Math.random() * this.bassPatterns.length)];
 }
+}
+private createBitcrusher(): ScriptProcessorNode {
+  const bufferSize = 4096;
+  const node = this.audioContext!.createScriptProcessor(bufferSize, 1, 1);
+  node.bits = 4; // between 1 and 16
+  node.normfreq = 0.1; // between 0.0 and 1.0
+  let step = Math.pow(1 / 2, node.bits);
+  let phaser = 0;
+  let last = 0;
+  node.onaudioprocess = (e) => {
+    const input = e.inputBuffer.getChannelData(0);
+    const output = e.outputBuffer.getChannelData(0);
+    step = Math.pow(1 / 2, node.bits); // Recalculate if bits change
+    for (let i = 0; i < bufferSize; i++) {
+      phaser += node.normfreq;
+      if (phaser >= 1.0) {
+        phaser -= 1.0;
+        last = step * Math.floor(input[i] / step + 0.5);
+      }
+      output[i] = last;
+    }
+  };
+  return node;
 }
 start(): void {
 if (this.isPlaying || !this.audioContext || !this.masterGain) return;
@@ -98,7 +124,7 @@ gain.gain.value = 0.25;
 gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.25);
 osc.connect(filter);
 filter.connect(gain);
-gain.connect(this.masterGain);
+gain.connect(this.bitcrusher);
 osc.start();
 osc.stop(this.audioContext.currentTime + 0.25);
 this.oscillators.push(osc);
@@ -123,7 +149,7 @@ gain.gain.value = 0.2;
 gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
 osc.connect(filter);
 filter.connect(gain);
-gain.connect(this.masterGain);
+gain.connect(this.bitcrusher);
 osc.start();
 osc.stop(this.audioContext.currentTime + 0.5);
 this.oscillators.push(osc);
@@ -142,7 +168,7 @@ osc.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0
 gain.gain.setValueAtTime(0.8, this.audioContext.currentTime);
 gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
 osc.connect(gain);
-gain.connect(this.masterGain);
+gain.connect(this.bitcrusher);
 osc.start();
 osc.stop(this.audioContext.currentTime + 0.5);
 }
@@ -159,7 +185,7 @@ const gain = this.audioContext.createGain();
 gain.gain.setValueAtTime(0.4, this.audioContext.currentTime);
 gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
 noise.connect(gain);
-gain.connect(this.masterGain);
+gain.connect(this.bitcrusher);
 noise.start();
 noise.stop(this.audioContext.currentTime + 0.2);
 }
@@ -183,7 +209,7 @@ gain.gain.setValueAtTime(0.2, this.audioContext.currentTime);
 gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
 noise.connect(bandpass);
 bandpass.connect(gain);
-gain.connect(this.masterGain);
+gain.connect(this.bitcrusher);
 noise.start();
 noise.stop(this.audioContext.currentTime + 0.1);
 }
