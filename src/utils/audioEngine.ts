@@ -24,7 +24,7 @@ export class AudioEngine {
     if (!this.audioContext) {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       this.masterGain = this.audioContext.createGain();
-      this.masterGain.gain.value = 0.15;
+      this.masterGain.gain.value = 0.5;
       this.masterGain.connect(this.audioContext.destination);
       this.currentMelody = this.melodyPatterns[Math.floor(Math.random() * this.melodyPatterns.length)];
     }
@@ -79,7 +79,7 @@ export class AudioEngine {
     osc.type = 'square';
     osc.frequency.value = frequency;
 
-    gain.gain.value = 0.08;
+    gain.gain.value = 0.25;
     gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.25);
 
     osc.connect(gain);
@@ -109,7 +109,7 @@ export class AudioEngine {
     osc.type = 'sawtooth';
     osc.frequency.value = frequency;
 
-    gain.gain.value = 0.05;
+    gain.gain.value = 0.2;
     gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
 
     osc.connect(gain);
