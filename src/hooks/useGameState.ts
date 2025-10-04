@@ -122,13 +122,20 @@ export const useGameState = () => {
   }, [initializeGame]);
 
   const restartGame = useCallback(() => {
-    // Stop any ongoing audio before restart
-    audioEngineRef.current.stop();
+    // Stop ALL audio before restart
+    audioEngineRef.current.stopAll();
     initializeGame();
     setGameStarted(true);
     // Start background audio
     audioEngineRef.current.start();
   }, [initializeGame]);
+
+  // Stop all audio on game over
+  useEffect(() => {
+    if (gameOver) {
+      audioEngineRef.current.stopAll();
+    }
+  }, [gameOver]);
 
   const isWalkable = useCallback((x: number, y: number): boolean => {
     const tileX = Math.floor(x / TILE_SIZE);
