@@ -288,25 +288,28 @@ export const useGameState = () => {
           newPlayer.isMoving = false;
           newPlayer.animationFrame = 0;
 
-          const timeSinceLastMove = (currentTime - prevPlayer.lastMoveTime) / 1000;
+          // Detect aura farming start
           if (timeSinceLastMove >= AURA_FARMING_DELAY && !prevPlayer.isAuraFarming) {
             newPlayer.isAuraFarming = true;
             if (!auraFarmingSoundPlayed.current) {
-              audioEngineRef.current.playAuraFarmingSound();
+              audioEngineRef.current.playAuraFarmingIntro();
               auraFarmingSoundPlayed.current = true;
             }
           }
-
+          
+          // While farming (loop pulse each second)
           if (newPlayer.isAuraFarming && animationFrame.current % 60 === 0) {
             newPlayer.score += AURA_FARMING_GAIN;
             newPlayer.health -= 2;
-            audioEngineRef.current.playAuraFarmingSound();
+            audioEngineRef.current.playAuraFarmingLoop();
           }
-        }
+          
+          // Detect aura farming end (when player moves again)
+          if (prevPlayer.isAuraFarming && !newPlayer.isAuraFarming) {
+            audioEngineRef.current.resumeBackground(); // bring back the tunes
+            auraFarmingSoundPlayed.current = false;
+          }
 
-        if (newPlayer.health < newPlayer.maxHealth) {
-          newPlayer.health = Math.min(newPlayer.maxHealth, newPlayer.health + HEALTH_REGEN_RATE / 60);
-        }
 
         const egoTimePassed = (currentTime - lastEgoDecayTime.current) / 1000;
         if (egoTimePassed >= 1) {
