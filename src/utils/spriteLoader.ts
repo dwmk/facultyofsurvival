@@ -2,8 +2,8 @@ export class SpriteLoader {
   private image: HTMLImageElement | null = null;
   private loaded = false;
 
-  readonly SPRITE_WIDTH = 384;
-  readonly SPRITE_HEIGHT = 256;
+  readonly SPRITE_WIDTH = 32;
+  readonly SPRITE_HEIGHT = 32;
   readonly COLUMNS = 12;
   readonly ROWS = 8;
   readonly CHARS_PER_ROW = 4;
