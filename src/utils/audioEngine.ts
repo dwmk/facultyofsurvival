@@ -222,9 +222,18 @@ private currentBass: number[] = [];
     const noise = this.audioContext.createBufferSource();
     noise.buffer = buffer;
 
+    const highpass = this.audioContext.createBiquadFilter();
+    highpass.type = "highpass";
+    highpass.frequency.value = 5000;
+
     const bandpass = this.audioContext.createBiquadFilter();
-    bandpass.type = "highpass";
-    bandpass.frequency.value = 5000;
+    bandpass.type = "bandpass";
+    bandpass.frequency.value = 10000;
+
+    noise.connect(highpass);
+    highpass.connect(bandpass);
+    bandpass.connect(gain);
+
 
     const gain = this.audioContext.createGain();
     gain.gain.setValueAtTime(0.2, this.audioContext.currentTime);
