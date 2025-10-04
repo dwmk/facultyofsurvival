@@ -88,6 +88,22 @@
 <a class="floating-pill right-pill" href="https://www.instagram.com/dewanmukto" target="_blank" rel="noopener">
   <i class="fa-brands fa-instagram"></i><span>Game by Dewan Mukto</span>
 </a>
+    <!-- Portrait mode overlay -->
+    <div id="rotate-overlay">
+      <p>Rotate device to landscape mode</p>
+    </div>
+
+    <!-- Mobile D-pad -->
+    <div id="mobile-controls">
+      <div class="dpad">
+        <button id="up">▲</button>
+        <div>
+          <button id="left">◀</button>
+          <button id="down">▼</button>
+          <button id="right">▶</button>
+        </div>
+      </div>
+    </div>
 <style>body{margin:0;overflow:hidden}#intro{position:fixed;top:0;left:0;width:100vw;height:100vh;background:black;display:flex;justify-content:center;align-items:center;z-index:9999;opacity:1;animation:fadeOut .5s ease-in-out forwards;animation-delay:0.5s}#intro img{width:150px;animation:pulse 1s infinite}@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.01);opacity:.7}}@keyframes fadeOut{from{opacity:1}to{opacity:0;visibility:hidden}}</style><div id="intro"><img src="https://dewanmukto.github.io/asset/images/classic_logo.png" alt="Logo"></div><script>document.getElementById("intro").addEventListener("animationend",()=>{document.getElementById("intro").style.display="none";document.body.style.overflow="auto"});</script>
   </body>
 </html>
