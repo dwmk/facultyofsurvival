@@ -17,7 +17,24 @@ export class AudioEngine {
     [0, 4, 2, 5, 0, 4, 2, 7],
   ];
 
-  private bassPattern = [0, 0, 4, 4, 0, 0, 4, 4];
+    private drumPatterns = {
+    kick: [1, 0, 0, 0, 1, 0, 0, 0],   // on the "1"
+    snare: [0, 0, 1, 0, 0, 0, 1, 0],  // on 2 & 4
+    hat:   [1, 1, 1, 1, 1, 1, 1, 1],  // every beat
+  };
+
+  private drumIndex = 0;
+  private drumIntervalId: number | null = null;
+
+  private bassPatterns = [
+  [0, 0, 4, 4, 0, 0, 4, 4],
+  [0, 4, 0, 5, 0, 7, 0, 5],
+  [0, 0, 5, 5, 4, 4, 2, 2],
+  [0, 2, 4, 5, 4, 2, 0, 0],
+  [0, 7, 0, 5, 0, 4, 0, 2],
+];
+private currentBass: number[] = [];
+
   private currentMelody: number[] = [];
 
   initialize(): void {
@@ -27,22 +44,28 @@ export class AudioEngine {
       this.masterGain.gain.value = 0.5;
       this.masterGain.connect(this.audioContext.destination);
       this.currentMelody = this.melodyPatterns[Math.floor(Math.random() * this.melodyPatterns.length)];
+      this.currentBass = this.bassPatterns[Math.floor(Math.random() * this.bassPatterns.length)];
     }
   }
 
-  start(): void {
+   start(): void {
     if (this.isPlaying || !this.audioContext || !this.masterGain) return;
 
     this.isPlaying = true;
     this.melodyIndex = 0;
     this.bassIndex = 0;
+    this.drumIndex = 0;
 
     this.playMelodyNote();
     this.melodyIntervalId = window.setInterval(() => this.playMelodyNote(), 300);
 
     this.playBassNote();
     this.bassIntervalId = window.setInterval(() => this.playBassNote(), 600);
+
+    this.playDrumBeat();
+    this.drumIntervalId = window.setInterval(() => this.playDrumBeat(), 150); // fast ticks
   }
+
 
   stop(): void {
     this.isPlaying = false;
@@ -55,6 +78,11 @@ export class AudioEngine {
     if (this.bassIntervalId) {
       clearInterval(this.bassIntervalId);
       this.bassIntervalId = null;
+    }
+
+    if (this.drumIntervalId) {
+      clearInterval(this.drumIntervalId);
+      this.drumIntervalId = null;
     }
 
     this.oscillators.forEach(osc => {
@@ -97,10 +125,23 @@ export class AudioEngine {
     }
   }
 
+  private playDrumBeat(): void {
+    if (!this.audioContext || !this.masterGain) return;
+
+    const step = this.drumIndex % 8;
+
+    if (this.drumPatterns.kick[step]) this.playKick();
+    if (this.drumPatterns.snare[step]) this.playSnare();
+    if (this.drumPatterns.hat[step]) this.playHat();
+
+    this.drumIndex++;
+  }
+
+
   private playBassNote(): void {
     if (!this.audioContext || !this.masterGain) return;
 
-    const noteIndex = this.bassPattern[this.bassIndex % this.bassPattern.length];
+    const noteIndex = this.currentBass[this.bassIndex % this.currentBass.length];
     const frequency = this.scale[noteIndex] / 2;
 
     const osc = this.audioContext.createOscillator();
@@ -121,6 +162,82 @@ export class AudioEngine {
     this.oscillators.push(osc);
     this.bassIndex++;
   }
+
+    private playKick(): void {
+    if (!this.audioContext || !this.masterGain) return;
+
+    const osc = this.audioContext.createOscillator();
+    const gain = this.audioContext.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, this.audioContext.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.5);
+
+    gain.gain.setValueAtTime(0.8, this.audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start();
+    osc.stop(this.audioContext.currentTime + 0.5);
+  }
+
+  private playSnare(): void {
+    if (!this.audioContext || !this.masterGain) return;
+
+    const bufferSize = this.audioContext.sampleRate * 0.2;
+    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1; // white noise
+    }
+
+    const noise = this.audioContext.createBufferSource();
+    noise.buffer = buffer;
+
+    const gain = this.audioContext.createGain();
+    gain.gain.setValueAtTime(0.4, this.audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
+
+    noise.connect(gain);
+    gain.connect(this.masterGain);
+
+    noise.start();
+    noise.stop(this.audioContext.currentTime + 0.2);
+  }
+
+  private playHat(): void {
+    if (!this.audioContext || !this.masterGain) return;
+
+    const bufferSize = this.audioContext.sampleRate * 0.05;
+    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+
+    const noise = this.audioContext.createBufferSource();
+    noise.buffer = buffer;
+
+    const bandpass = this.audioContext.createBiquadFilter();
+    bandpass.type = "highpass";
+    bandpass.frequency.value = 5000;
+
+    const gain = this.audioContext.createGain();
+    gain.gain.setValueAtTime(0.2, this.audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+
+    noise.connect(bandpass);
+    bandpass.connect(gain);
+    gain.connect(this.masterGain);
+
+    noise.start();
+    noise.stop(this.audioContext.currentTime + 0.1);
+  }
+
 
   playCollectSound(): void {
     if (!this.audioContext || !this.masterGain) return;
