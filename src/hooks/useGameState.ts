@@ -109,33 +109,17 @@ export const useGameState = () => {
     lastEgoDecayTime.current = Date.now();
     animationFrame.current = 0;
     auraFarmingSoundPlayed.current = false;
-
-    // Initialize audio engine
-    audioEngineRef.current.initialize();
   }, []);
 
   const startGame = useCallback(() => {
     initializeGame();
     setGameStarted(true);
-    // Start background audio
-    audioEngineRef.current.start();
   }, [initializeGame]);
 
   const restartGame = useCallback(() => {
-    // Stop ALL audio before restart
-    audioEngineRef.current.stopAll();
     initializeGame();
     setGameStarted(true);
-    // Start background audio
-    audioEngineRef.current.start();
   }, [initializeGame]);
-
-  // Stop all audio on game over
-  useEffect(() => {
-    if (gameOver) {
-      audioEngineRef.current.stopAll();
-    }
-  }, [gameOver]);
 
   const isWalkable = useCallback((x: number, y: number): boolean => {
     const tileX = Math.floor(x / TILE_SIZE);
@@ -274,7 +258,7 @@ export const useGameState = () => {
         if (keysPressed.current.has('a') || keysPressed.current.has('arrowleft')) dx -= currentMoveSpeed;
         if (keysPressed.current.has('d') || keysPressed.current.has('arrowright')) dx += currentMoveSpeed;
 
-        const now = Date.now();
+        const currentTime = Date.now();
 
         if (dx !== 0 || dy !== 0) {
           const newX = prevPlayer.position.x + dx;
@@ -283,13 +267,11 @@ export const useGameState = () => {
           if (isWalkable(newX, newY)) {
             newPlayer.position = { x: newX, y: newY };
             newPlayer.isMoving = true;
-            newPlayer.lastMoveTime = now;
+            newPlayer.lastMoveTime = currentTime;
 
-            // End aura farming on move
             if (prevPlayer.isAuraFarming) {
               newPlayer.isAuraFarming = false;
               auraFarmingSoundPlayed.current = false;
-              audioEngineRef.current.stopAuraFarming(); // Resume background, stop aura loop
             }
 
             if (Math.abs(dx) > Math.abs(dy)) {
@@ -306,29 +288,30 @@ export const useGameState = () => {
           newPlayer.isMoving = false;
           newPlayer.animationFrame = 0;
 
-          const timeSinceLastMove = (now - prevPlayer.lastMoveTime) / 1000; // seconds
-
-          // Detect aura farming start
+          const timeSinceLastMove = (currentTime - prevPlayer.lastMoveTime) / 1000;
           if (timeSinceLastMove >= AURA_FARMING_DELAY && !prevPlayer.isAuraFarming) {
             newPlayer.isAuraFarming = true;
             if (!auraFarmingSoundPlayed.current) {
-              audioEngineRef.current.playAuraFarmingIntro();
+              audioEngineRef.current.playAuraFarmingSound();
               auraFarmingSoundPlayed.current = true;
             }
           }
-          
-          // While farming (score/health pulse each second; aura loop handled by interval)
+
           if (newPlayer.isAuraFarming && animationFrame.current % 60 === 0) {
             newPlayer.score += AURA_FARMING_GAIN;
             newPlayer.health -= 2;
-            // Removed redundant playAuraFarmingLoop() call
+            audioEngineRef.current.playAuraFarmingSound();
           }
         }
 
-        const egoTimePassed = (now - lastEgoDecayTime.current) / 1000;
+        if (newPlayer.health < newPlayer.maxHealth) {
+          newPlayer.health = Math.min(newPlayer.maxHealth, newPlayer.health + HEALTH_REGEN_RATE / 60);
+        }
+
+        const egoTimePassed = (currentTime - lastEgoDecayTime.current) / 1000;
         if (egoTimePassed >= 1) {
           newPlayer.score = Math.max(0, newPlayer.score - EGO_DECAY_RATE);
-          lastEgoDecayTime.current = now;
+          lastEgoDecayTime.current = currentTime;
 
           if (newPlayer.score <= 0) {
             setGameOver(true);
