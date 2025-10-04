@@ -33,6 +33,8 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
     loadSprites();
   }, []);
 
+  
+
   useEffect(() => {
   let interval: NodeJS.Timeout | null = null;
 
@@ -97,6 +99,24 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
     if (!ctx) return;
 
     ctx.imageSmoothingEnabled = false;
+    // add shadow below character sprites
+    const drawShadow = (ctx: CanvasRenderingContext2D, spriteX: number, spriteY: number, scale: number = 2.5) => {
+  const w = 32 * scale; // Sprite width after scaling
+  const h = 32 * scale; // Sprite height after scaling
+
+  const shadowX = spriteX + w / 2; // Center horizontally
+  const shadowY = spriteY + h + 5; // Below the sprite by 5px
+
+  const shadowWidth = w * 1.2; // Slightly wider than sprite
+  const shadowHeight = h * 0.2; // Flat oval
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; // Semi-transparent black
+  ctx.beginPath();
+  ctx.ellipse(shadowX, shadowY, shadowWidth / 2, shadowHeight / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+};
 
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
@@ -173,6 +193,8 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
           return;
         }
 
+        drawShadow(ctx, screenX, screenY, 2.5);
+
         spriteLoaderRef.current.drawSprite(
           ctx,
           student.spriteIndex,
@@ -242,6 +264,8 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
 
       const playerScreenX = player.position.x - cameraX - 40;
       const playerScreenY = player.position.y - cameraY - 40;
+
+      drawShadow(ctx, playerScreenX, playerScreenY, 2.5);
 
       spriteLoaderRef.current.drawSprite(
         ctx,
