@@ -34,6 +34,62 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
   }, []);
 
   useEffect(() => {
+  let interval: NodeJS.Timeout | null = null;
+
+  const movePlayer = (dir: string) => {
+    switch (dir) {
+      case "up":
+        handleKeyDown({ key: "ArrowUp" } as KeyboardEvent);
+        break;
+      case "down":
+        handleKeyDown({ key: "ArrowDown" } as KeyboardEvent);
+        break;
+      case "left":
+        handleKeyDown({ key: "ArrowLeft" } as KeyboardEvent);
+        break;
+      case "right":
+        handleKeyDown({ key: "ArrowRight" } as KeyboardEvent);
+        break;
+    }
+  };
+
+  const startMoving = (dir: string) => {
+    movePlayer(dir); // immediate move
+    interval = setInterval(() => movePlayer(dir), 150); // repeat every 150ms
+  };
+
+  const stopMoving = () => {
+    if (interval) {
+      clearInterval(interval);
+      interval = null;
+    }
+  };
+
+  ["up", "down", "left", "right"].forEach((dir) => {
+    const btn = document.getElementById(dir);
+    if (btn) {
+      btn.addEventListener("touchstart", () => startMoving(dir));
+      btn.addEventListener("mousedown", () => startMoving(dir));
+
+      btn.addEventListener("touchend", stopMoving);
+      btn.addEventListener("mouseup", stopMoving);
+      btn.addEventListener("mouseleave", stopMoving); // for when finger slides off
+    }
+  });
+
+  return () => {
+    stopMoving();
+    ["up", "down", "left", "right"].forEach((dir) => {
+      const btn = document.getElementById(dir);
+      if (btn) {
+        btn.replaceWith(btn.cloneNode(true)); // remove old listeners
+      }
+    });
+  };
+}, []);
+
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
