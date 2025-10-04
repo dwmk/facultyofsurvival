@@ -285,56 +285,98 @@ private currentBass: number[] = [];
   }
 
   playAuraFarmingSound(): void {
-    if (!this.audioContext || !this.masterGain) return;
-  
-    const now = this.audioContext.currentTime;
-  
-    // Master gain for explosion
-    const gain = this.audioContext.createGain();
-    gain.gain.setValueAtTime(1.0, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 5); // 5-second decay
-    gain.connect(this.masterGain);
-  
-    // Low-frequency rumble oscillator
-    const osc = this.audioContext.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(40, now);           // deep rumble
-    osc.frequency.exponentialRampToValueAtTime(20, now + 5); // slow downward sweep
-    osc.connect(gain);
-    osc.start(now);
-    osc.stop(now + 5);
-  
-    // Noise burst for explosion texture
-    const bufferSize = this.audioContext.sampleRate * 1; // 1 second buffer
-    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / bufferSize); // decaying noise
+  if (!this.audioContext || !this.masterGain) return;
+
+  const now = this.audioContext.currentTime;
+
+  // --- EPIC DRONE (low growl) ---
+  const drone = this.audioContext.createOscillator();
+  drone.type = 'sawtooth';
+  drone.frequency.setValueAtTime(55, now); // Low A bass
+  const droneGain = this.audioContext.createGain();
+  droneGain.gain.setValueAtTime(0.3, now);
+  drone.connect(droneGain);
+  droneGain.connect(this.masterGain);
+  drone.start(now);
+  drone.stop(now + 8); // lasts 8 sec
+
+  // --- DRUM BEATS (kick + snare noise) ---
+  for (let i = 0; i < 16; i++) {
+    const t = now + i * 0.5; // half-beat spacing
+
+    // Kick
+    const kickOsc = this.audioContext.createOscillator();
+    kickOsc.type = 'sine';
+    kickOsc.frequency.setValueAtTime(120, t);
+    kickOsc.frequency.exponentialRampToValueAtTime(40, t + 0.3);
+
+    const kickGain = this.audioContext.createGain();
+    kickGain.gain.setValueAtTime(0.9, t);
+    kickGain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+
+    kickOsc.connect(kickGain);
+    kickGain.connect(this.masterGain);
+    kickOsc.start(t);
+    kickOsc.stop(t + 0.3);
+
+    // Snare (on beats 2 & 4)
+    if (i % 4 === 2) {
+      const bufferSize = this.audioContext.sampleRate * 0.2;
+      const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let j = 0; j < bufferSize; j++) {
+        data[j] = Math.random() * 2 - 1;
+      }
+      const noise = this.audioContext.createBufferSource();
+      noise.buffer = buffer;
+
+      const snareGain = this.audioContext.createGain();
+      snareGain.gain.setValueAtTime(0.5, t);
+      snareGain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
+
+      noise.connect(snareGain);
+      snareGain.connect(this.masterGain);
+      noise.start(t);
+      noise.stop(t + 0.2);
     }
-    const noise = this.audioContext.createBufferSource();
-    noise.buffer = buffer;
-  
-    const noiseGain = this.audioContext.createGain();
-    noiseGain.gain.setValueAtTime(1.0, now);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 5); // match rumble decay
-  
-    noise.connect(noiseGain);
-    noiseGain.connect(gain);
-    noise.start(now);
-    noise.stop(now + 5);
-  
-    // Optional: add mid-frequency crackle using short oscillators
-    const osc2 = this.audioContext.createOscillator();
-    osc2.type = 'square';
-    osc2.frequency.setValueAtTime(300, now);
-    osc2.frequency.exponentialRampToValueAtTime(100, now + 5);
-    const osc2Gain = this.audioContext.createGain();
-    osc2Gain.gain.setValueAtTime(0.2, now);
-    osc2Gain.gain.exponentialRampToValueAtTime(0.001, now + 5);
-    osc2.connect(osc2Gain);
-    osc2Gain.connect(gain);
-    osc2.start(now);
-    osc2.stop(now + 5);
   }
+
+  // --- FAST ARPEGGIO (intense melody line) ---
+  const arpeggioNotes = [220, 277.18, 329.63, 440]; // A minor arpeggio
+  for (let i = 0; i < 32; i++) {
+    const t = now + i * 0.25;
+    const note = arpeggioNotes[i % arpeggioNotes.length];
+
+    const osc = this.audioContext.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(note, t);
+
+    const gain = this.audioContext.createGain();
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(t);
+    osc.stop(t + 0.2);
+  }
+
+  // --- CHORD STAB (big dark hit) ---
+  const chord = [110, 220, 329.63]; // Root, fifth, minor third
+  chord.forEach((freq, idx) => {
+    const osc = this.audioContext.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(freq, now + 1.5);
+
+    const gain = this.audioContext.createGain();
+    gain.gain.setValueAtTime(0.4, now + 1.5);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 3.5);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now + 1.5);
+    osc.stop(now + 3.5);
+  });
+}
 
 }
