@@ -309,7 +309,7 @@ export const useGameState = () => {
             audioEngineRef.current.resumeBackground(); // bring back the tunes
             auraFarmingSoundPlayed.current = false;
           }
-
+        }
 
         const egoTimePassed = (currentTime - lastEgoDecayTime.current) / 1000;
         if (egoTimePassed >= 1) {
