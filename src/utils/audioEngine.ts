@@ -7,6 +7,8 @@ export class AudioEngine {
   private bassIndex = 0;
   private melodyIntervalId: number | null = null;
   private bassIntervalId: number | null = null;
+  private auraIntervalId: number | null = null;
+  private isAuraFarming = false;
 
   private scale = [220, 246.94, 277.18, 293.66, 329.63, 369.99, 415.30, 440];
 
@@ -284,68 +286,104 @@ private currentBass: number[] = [];
     osc.stop(this.audioContext.currentTime + 0.2);
   }
 
-  // Big badass intro when aura farming starts
-playAuraFarmingIntro(): void {
-  if (!this.audioContext || !this.masterGain) return;
+// 🔥 Aura farming start
+  playAuraFarmingIntro(): void {
+    if (!this.audioContext || !this.masterGain) return;
+    if (this.isAuraFarming) return; // already playing
 
-  // 🔥 Stop background tunes so aura farming is isolated
-  this.stop();
+    this.stop(); // stop background
+    this.isAuraFarming = true;
 
-  const now = this.audioContext.currentTime;
+    const now = this.audioContext.currentTime;
 
-  // Low drone + chord stab
-  const chord = [110, 220, 329.63];
-  chord.forEach(freq => {
-    const osc = this.audioContext!.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(freq, now);
+    // Big chord stab
+    const chord = [110, 220, 329.63];
+    chord.forEach(freq => {
+      const osc = this.audioContext!.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, now);
 
-    const gain = this.audioContext!.createGain();
-    gain.gain.setValueAtTime(0.5, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 3);
+      const gain = this.audioContext!.createGain();
+      gain.gain.setValueAtTime(0.6, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
 
-    osc.connect(gain);
-    gain.connect(this.masterGain!);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
 
-    osc.start(now);
-    osc.stop(now + 3);
-  });
+      osc.start(now);
+      osc.stop(now + 2.5);
+    });
 
-  // Punchy kick
-  const kick = this.audioContext.createOscillator();
-  kick.type = 'sine';
-  kick.frequency.setValueAtTime(120, now);
-  kick.frequency.exponentialRampToValueAtTime(40, now + 0.5);
+    // Punch kick
+    const kick = this.audioContext.createOscillator();
+    kick.type = 'sine';
+    kick.frequency.setValueAtTime(120, now);
+    kick.frequency.exponentialRampToValueAtTime(40, now + 0.5);
 
-  const kickGain = this.audioContext.createGain();
-  kickGain.gain.setValueAtTime(1.0, now);
-  kickGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+    const kickGain = this.audioContext.createGain();
+    kickGain.gain.setValueAtTime(1.0, now);
+    kickGain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
 
-  kick.connect(kickGain);
-  kickGain.connect(this.masterGain!);
-  kick.start(now);
-  kick.stop(now + 0.5);
-}
+    kick.connect(kickGain);
+    kickGain.connect(this.masterGain!);
+    kick.start(now);
+    kick.stop(now + 0.5);
 
-// Short repeating pulse while aura farming continues
-playAuraFarmingLoop(): void {
-  if (!this.audioContext || !this.masterGain) return;
+    // Start looping boss theme after intro
+    this.auraIntervalId = window.setInterval(() => this.playAuraFarmingLoop(), 400);
+  }
 
-  const now = this.audioContext.currentTime;
+  // 🔁 Boss theme loop
+  private playAuraFarmingLoop(): void {
+    if (!this.audioContext || !this.masterGain) return;
 
-  const osc = this.audioContext.createOscillator();
-  osc.type = 'square';
-  osc.frequency.setValueAtTime(440, now); // mid note
+    const now = this.audioContext.currentTime;
 
-  const gain = this.audioContext.createGain();
-  gain.gain.setValueAtTime(0.15, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    // Driving bass note
+    const bass = this.audioContext.createOscillator();
+    bass.type = "sawtooth";
+    bass.frequency.setValueAtTime(110, now);
 
-  osc.connect(gain);
-  gain.connect(this.masterGain!);
+    const bassGain = this.audioContext.createGain();
+    bassGain.gain.setValueAtTime(0.25, now);
+    bassGain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
 
-  osc.start(now);
-  osc.stop(now + 0.3);
-}
+    bass.connect(bassGain);
+    bassGain.connect(this.masterGain!);
+    bass.start(now);
+    bass.stop(now + 0.35);
+
+    // Snare-like noise
+    const bufferSize = this.audioContext.sampleRate * 0.1;
+    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+
+    const noise = this.audioContext.createBufferSource();
+    noise.buffer = buffer;
+
+    const noiseGain = this.audioContext.createGain();
+    noiseGain.gain.setValueAtTime(0.2, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+
+    noise.connect(noiseGain);
+    noiseGain.connect(this.masterGain!);
+    noise.start(now);
+    noise.stop(now + 0.1);
+  }
+
+  // ❌ End aura farming, resume normal background
+  stopAuraFarming(): void {
+    if (this.auraIntervalId) {
+      clearInterval(this.auraIntervalId);
+      this.auraIntervalId = null;
+    }
+    this.isAuraFarming = false;
+
+    // Resume background beats
+    this.start();
+  }
 
 }
