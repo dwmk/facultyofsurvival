@@ -23,6 +23,8 @@ function App() {
 
   const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
   const audioInitializedRef = useRef(false);
+  const prevCoinsCountRef = useRef(0);
+  const prevHealthRef = useRef(100);
 
   useEffect(() => {
     if (gameStarted && !audioInitializedRef.current) {
@@ -37,25 +39,22 @@ function App() {
   }, [gameStarted, gameOver]);
 
   useEffect(() => {
-    const prevCoinsCount = useRef(coins.filter(c => c.collected).length);
     const collectedCount = coins.filter(c => c.collected).length;
 
-    if (collectedCount > prevCoinsCount.current) {
+    if (collectedCount > prevCoinsCountRef.current) {
       audioEngineRef.current.playCollectSound();
     }
 
-    prevCoinsCount.current = collectedCount;
+    prevCoinsCountRef.current = collectedCount;
   }, [coins]);
 
   useEffect(() => {
+    if (player && player.health < prevHealthRef.current) {
+      audioEngineRef.current.playHitSound();
+    }
+
     if (player) {
-      const prevHealth = useRef(player.health);
-
-      if (player.health < prevHealth.current) {
-        audioEngineRef.current.playHitSound();
-      }
-
-      prevHealth.current = player.health;
+      prevHealthRef.current = player.health;
     }
   }, [player?.health]);
 
