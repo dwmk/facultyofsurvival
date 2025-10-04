@@ -41,8 +41,6 @@ export const useGameState = () => {
   const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
   const lastEgoDecayTime = useRef<number>(0);
   const mapGeneratorRef = useRef<MapGenerator | null>(null);
-  const auraFarmingSoundPlayed = useRef<boolean>(false);
-  const isBossModeActive = useRef<boolean>(false);
 
   const initializeGame = useCallback(() => {
     const mapGen = new MapGenerator(MAP_SIZE, MAP_SIZE);
@@ -109,9 +107,7 @@ export const useGameState = () => {
     lastDamageTime.current = 0;
     lastEgoDecayTime.current = Date.now();
     animationFrame.current = 0;
-    auraFarmingSoundPlayed.current = false;
     audioEngineRef.current.setBossMode(false);
-    isBossModeActive.current = false;
   }, []);
 
   const startGame = useCallback(() => {
@@ -274,9 +270,7 @@ export const useGameState = () => {
 
             if (prevPlayer.isAuraFarming) {
               newPlayer.isAuraFarming = false;
-              auraFarmingSoundPlayed.current = false;
               audioEngineRef.current.setBossMode(false);
-              isBossModeActive.current = false;
             }
 
             if (Math.abs(dx) > Math.abs(dy)) {
@@ -296,18 +290,12 @@ export const useGameState = () => {
           const timeSinceLastMove = (currentTime - prevPlayer.lastMoveTime) / 1000;
           if (timeSinceLastMove >= AURA_FARMING_DELAY && !prevPlayer.isAuraFarming) {
             newPlayer.isAuraFarming = true;
-            if (!auraFarmingSoundPlayed.current) {
-              audioEngineRef.current.playAuraFarmingSound();
-              auraFarmingSoundPlayed.current = true;
-              audioEngineRef.current.setBossMode(true);
-              isBossModeActive.current = true;
-            }
+            audioEngineRef.current.setBossMode(true);
           }
 
           if (newPlayer.isAuraFarming && animationFrame.current % 60 === 0) {
             newPlayer.score += AURA_FARMING_GAIN;
             newPlayer.health -= 2;
-            audioEngineRef.current.playAuraFarmingSound();
           }
         }
 
@@ -324,7 +312,6 @@ export const useGameState = () => {
             setGameOver(true);
             setGameOverReason('You lost your self-esteem!');
             audioEngineRef.current.setBossMode(false);
-            isBossModeActive.current = false;
           }
         }
 
@@ -475,7 +462,6 @@ export const useGameState = () => {
                 setGameOver(true);
                 setGameOverReason('You were overwhelmed by student requests!');
                 audioEngineRef.current.setBossMode(false);
-                isBossModeActive.current = false;
               }
               lastDamageTime.current = Date.now();
               audioEngineRef.current.playHitSound();
