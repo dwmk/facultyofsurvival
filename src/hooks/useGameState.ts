@@ -306,13 +306,13 @@ export const useGameState = () => {
         }
 
         const egoTimePassed = (currentTime - lastEgoDecayTime.current) / 1000;
-        if (egoTimePassed >= 60) {
+        if (egoTimePassed >= 1) {
           newPlayer.score = Math.max(0, newPlayer.score - EGO_DECAY_RATE);
           lastEgoDecayTime.current = currentTime;
 
           if (newPlayer.score <= 0) {
             setGameOver(true);
-            setGameOverReason('You ran out of ego');
+            setGameOverReason('You lost your self-esteem!');
           }
         }
 
@@ -461,7 +461,7 @@ export const useGameState = () => {
               const newHealth = p.health - STUDENT_DAMAGE;
               if (newHealth <= 0) {
                 setGameOver(true);
-                setGameOverReason('Your mental health depleted');
+                setGameOverReason('You were overwhelmed by student requests!');
               }
               lastDamageTime.current = Date.now();
               audioEngineRef.current.playHitSound();
