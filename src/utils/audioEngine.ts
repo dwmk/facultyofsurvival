@@ -288,9 +288,12 @@ private currentBass: number[] = [];
 playAuraFarmingIntro(): void {
   if (!this.audioContext || !this.masterGain) return;
 
+  // 🔥 Stop background tunes so aura farming is isolated
+  this.stop();
+
   const now = this.audioContext.currentTime;
 
-  // Low drone + chord stab (dramatic entry)
+  // Low drone + chord stab
   const chord = [110, 220, 329.63];
   chord.forEach(freq => {
     const osc = this.audioContext!.createOscillator();
@@ -308,7 +311,7 @@ playAuraFarmingIntro(): void {
     osc.stop(now + 3);
   });
 
-  // Add some punch (kick hit)
+  // Punchy kick
   const kick = this.audioContext.createOscillator();
   kick.type = 'sine';
   kick.frequency.setValueAtTime(120, now);
