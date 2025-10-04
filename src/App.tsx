@@ -14,6 +14,7 @@ function App() {
     coins,
     gameStarted,
     gameOver,
+    gameOverReason,
     survivalTime,
     startGame,
     restartGame,
@@ -99,6 +100,7 @@ function App() {
           score={player.score}
           survivalTime={survivalTime}
           onRestart={handleRestart}
+          reason={gameOverReason}
         />
       )}
     </div>

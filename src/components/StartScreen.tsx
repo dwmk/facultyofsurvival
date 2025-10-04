@@ -21,9 +21,8 @@ export const StartScreen = ({ onStart }: StartScreenProps) => {
 
           <div className="space-y-2">
             <p><span className="text-yellow-400 font-bold">Movement:</span> Use WASD or Arrow Keys</p>
-            <p><span className="text-yellow-400 font-bold">Objective:</span> Avoid students and collect coins to gain ego.</p>
             <p><span className="text-red-400 font-bold">Danger:</span> Students will chase you and drain your mental health</p>
-            <p><span className="text-green-400 font-bold">Survival:</span> Health regenerates and ego depletes over time</p>
+            <p><span className="text-green-400 font-bold">Survival:</span> Health regenerates over time</p>
             <p><span className="text-blue-400 font-bold">AI:</span> Students communicate and hunt in groups</p>
           </div>
         </div>

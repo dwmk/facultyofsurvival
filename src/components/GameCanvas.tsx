@@ -197,6 +197,33 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
         playerScreenY,
         1
       );
+
+      if (player.isAuraFarming) {
+        const time = Date.now() / 1000;
+        const slideOffset = (time * 50) % 100;
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(168, 85, 247, 0.8)';
+        ctx.shadowBlur = 20;
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+
+        const gradient = ctx.createLinearGradient(
+          playerScreenX + 39 - 50 + slideOffset,
+          playerScreenY - 20,
+          playerScreenX + 39 + 50 + slideOffset,
+          playerScreenY - 20
+        );
+        gradient.addColorStop(0, 'rgba(168, 85, 247, 0.3)');
+        gradient.addColorStop(0.5, 'rgba(168, 85, 247, 1)');
+        gradient.addColorStop(1, 'rgba(168, 85, 247, 0.3)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillText('AURA FARMING', playerScreenX + 39, playerScreenY - 20);
+
+        ctx.restore();
+      }
     }
   }, [gameMap, player, students, coins, tileSize, mapSize]);
 
