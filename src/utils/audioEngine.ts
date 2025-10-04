@@ -98,33 +98,59 @@ export class AudioEngine {
     this.drumIndex++;
   }
 
+  private createBitCrusher(bits = 6, normFreq = 0.1): AudioNode {
+    const node = this.audioContext!.createScriptProcessor(256, 1, 1);
+    const step = Math.pow(0.5, bits);
+    let phaser = 0, last = 0;
+    node.onaudioprocess = (e) => {
+      const input = e.inputBuffer.getChannelData(0);
+      const output = e.outputBuffer.getChannelData(0);
+      for (let i = 0; i < input.length; i++) {
+        phaser += normFreq;
+        if (phaser >= 1.0) {
+          phaser -= 1.0;
+          last = step * Math.floor(input[i] / step + 0.5);
+        }
+        output[i] = last;
+      }
+    };
+    return node;
+  }
+
+
   private playMelodyNote(): void {
     const noteIndex = this.currentMelody[this.melodyIndex % this.currentMelody.length];
-    const frequency = this.scale[noteIndex];
-
+    const root = this.scale[noteIndex];
+  
     const osc = this.audioContext.createOscillator();
     const gain = this.audioContext.createGain();
-
+  
+    // Cycle through a quick arpeggio (root, 3rd, 5th)
+    const arpeggio = [root, root * 1.25, root * 1.5];
+    let t = this.audioContext.currentTime;
+    arpeggio.forEach((freq, i) => {
+      osc.frequency.setValueAtTime(freq, t + i * 0.05);
+    });
+  
     osc.type = 'square';
-    osc.frequency.value = frequency;
-
-    gain.gain.value = 0.25;
-    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.25);
-
+    gain.gain.value = 0.2;
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+  
     osc.connect(gain);
-    gain.connect(this.masterGain);
-
+    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain);
+  
     osc.start();
-    osc.stop(this.audioContext.currentTime + 0.25);
-
+    osc.stop(t + 0.3);
+  
     this.oscillators.push(osc);
     this.melodyIndex++;
-
+  
     if (this.melodyIndex >= this.currentMelody.length * 2) {
       this.currentMelody = this.melodyPatterns[Math.floor(Math.random() * this.melodyPatterns.length)];
       this.melodyIndex = 0;
     }
   }
+
 
   private playBassNote(): void {
     const noteIndex = this.currentBass[this.bassIndex % this.currentBass.length];
@@ -140,7 +166,7 @@ export class AudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
 
     osc.connect(gain);
-    gain.connect(this.masterGain);
+    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain);
 
     osc.start();
     osc.stop(this.audioContext.currentTime + 0.5);
@@ -161,7 +187,7 @@ export class AudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
 
     osc.connect(gain);
-    gain.connect(this.masterGain);
+    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain);
 
     osc.start();
     osc.stop(this.audioContext.currentTime + 0.5);
@@ -184,43 +210,47 @@ export class AudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
 
     noise.connect(gain);
-    gain.connect(this.masterGain);
+    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain);
 
     noise.start();
     noise.stop(this.audioContext.currentTime + 0.2);
   }
 
   private playHat(): void {
-    const bufferSize = this.audioContext.sampleRate * 0.05;
-    const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+    const bufferSize = this.audioContext!.sampleRate * 0.02;
+    const buffer = this.audioContext!.createBuffer(1, bufferSize, this.audioContext!.sampleRate);
     const data = buffer.getChannelData(0);
-
+  
     for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
+      data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize); // decay
     }
-
-    const noise = this.audioContext.createBufferSource();
+  
+    const noise = this.audioContext!.createBufferSource();
     noise.buffer = buffer;
-
-    const highpass = this.audioContext.createBiquadFilter();
-    highpass.type = "highpass";
-    highpass.frequency.value = 5000;
-
-    const bandpass = this.audioContext.createBiquadFilter();
-    bandpass.type = "bandpass";
-    bandpass.frequency.value = 10000;
-
-    const gain = this.audioContext.createGain();
+  
+    const gain = this.audioContext!.createGain();
     gain.gain.setValueAtTime(0.2, this.audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
-
-    noise.connect(bandpass);
-    bandpass.connect(gain);
-    gain.connect(this.masterGain);
-
+    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.05);
+  
+    // Add tiny blip for retro feel
+    const osc = this.audioContext!.createOscillator();
+    osc.type = "square";
+    osc.frequency.value = 8000;
+    const oscGain = this.audioContext!.createGain();
+    oscGain.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.05);
+  
+    noise.connect(gain);
+    osc.connect(oscGain);
+    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain);
+    oscGain.connect(this.masterGain);
+  
     noise.start();
-    noise.stop(this.audioContext.currentTime + 0.1);
+    noise.stop(this.audioContext!.currentTime + 0.05);
+    osc.start();
+    osc.stop(this.audioContext!.currentTime + 0.05);
   }
+
 
   playCollectSound(): void {
     if (!this.audioContext || !this.masterGain) return;
@@ -236,7 +266,7 @@ export class AudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.15);
 
     osc.connect(gain);
-    gain.connect(this.masterGain);
+    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain);
 
     osc.start();
     osc.stop(this.audioContext.currentTime + 0.15);
@@ -256,7 +286,7 @@ export class AudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
 
     osc.connect(gain);
-    gain.connect(this.masterGain);
+    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain);
 
     osc.start();
     osc.stop(this.audioContext.currentTime + 0.2);
@@ -271,7 +301,7 @@ export class AudioEngine {
     const gain = this.audioContext.createGain();
     gain.gain.setValueAtTime(1.0, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 5); // 5-second decay
-    gain.connect(this.masterGain);
+    gain.connect(this.createBitCrusher(5, 0.25)).connect(this.masterGain);
 
     // Low-frequency rumble oscillator
     const osc = this.audioContext.createOscillator();
