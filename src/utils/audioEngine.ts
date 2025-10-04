@@ -97,6 +97,10 @@ this.oscillators = [];
 toggleBossMode(): void {
   this.bossMode = !this.bossMode;
 }
+
+setBossMode(enabled: boolean): void {
+  this.bossMode = enabled;
+}
   
 private playBackgroundBeat(): void {
 if (!this.isPlaying || !this.audioContext || !this.masterGain) return;
