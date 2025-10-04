@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Player, Student, Coin, TileType } from '../types/game';
+import { Player, Student, Coin, TileType, StudentState } from '../types/game';
 import { SpriteLoader } from '../utils/spriteLoader';
 
 interface GameCanvasProps {
@@ -128,11 +128,33 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
           1
         );
 
-        if (student.chasing) {
-          const bubbleWidth = 120;
-          const bubbleHeight = 30;
+        if (student.state === StudentState.CHASING || student.state === StudentState.INFORMED) {
+          const displayText = student.state === StudentState.INFORMED ? '...' : student.complaint;
+
+          ctx.font = '8px "Press Start 2P", monospace';
+          const maxWidth = 180;
+          const words = displayText.split(' ');
+          const lines: string[] = [];
+          let currentLine = '';
+
+          words.forEach(word => {
+            const testLine = currentLine ? `${currentLine} ${word}` : word;
+            const metrics = ctx.measureText(testLine);
+            if (metrics.width > maxWidth && currentLine) {
+              lines.push(currentLine);
+              currentLine = word;
+            } else {
+              currentLine = testLine;
+            }
+          });
+          if (currentLine) lines.push(currentLine);
+
+          const lineHeight = 12;
+          const padding = 8;
+          const bubbleWidth = Math.min(maxWidth + padding * 2, 200);
+          const bubbleHeight = lines.length * lineHeight + padding * 2;
           const bubbleX = screenX + 39 - bubbleWidth / 2;
-          const bubbleY = screenY - 40;
+          const bubbleY = screenY - bubbleHeight - 15;
 
           ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
           ctx.strokeStyle = '#333';
@@ -152,11 +174,13 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
           ctx.stroke();
 
           ctx.fillStyle = '#333';
-          ctx.font = '10px "Press Start 2P", monospace';
+          ctx.font = '8px "Press Start 2P", monospace';
           ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          const text = student.complaint.length > 18 ? student.complaint.substring(0, 16) + '...' : student.complaint;
-          ctx.fillText(text, bubbleX + bubbleWidth / 2, bubbleY + bubbleHeight / 2);
+          ctx.textBaseline = 'top';
+
+          lines.forEach((line, i) => {
+            ctx.fillText(line, bubbleX + bubbleWidth / 2, bubbleY + padding + i * lineHeight);
+          });
         }
       });
 

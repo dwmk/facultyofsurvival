@@ -18,6 +18,13 @@ export interface Player extends Character {
   score: number;
 }
 
+export enum StudentState {
+  IDLE = 'idle',
+  CHASING = 'chasing',
+  INFORMED = 'informed',
+  SEARCHING = 'searching',
+}
+
 export interface Student extends Character {
   chasing: boolean;
   target: Position | null;
@@ -25,6 +32,8 @@ export interface Student extends Character {
   groupId: string | null;
   lastSeenPlayer: Position | null;
   communicationCooldown: number;
+  state: StudentState;
+  searchTarget: Position | null;
 }
 
 export interface Coin {
