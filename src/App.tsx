@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { CharacterSelect } from './components/CharacterSelect';
 import { GameCanvas } from './components/GameCanvas';
 import { HUD } from './components/HUD';
 import { StartScreen } from './components/StartScreen';
@@ -14,14 +15,21 @@ function App() {
     students,
     coins,
     npcs,
+    showCharSelect,
+    onCharSelect,
+    isUnlocked,
+    stats,
     gameStarted,
     gameOver,
     gameOverReason,
+    activeMarquee,
+    customPlayerSpritesheets,
     survivalTime,
     startGame,
     restartGame,
     shopOpen,
     nearNPC,
+    closeShop,
     shopItems,
     handlePurchase,
     playerUpgrades,
@@ -41,6 +49,16 @@ function App() {
       audioEngineRef.current.start();
       audioInitializedRef.current = true;
     }
+
+    if (showCharSelect) {
+    return (
+      <CharacterSelect
+        onSelect={onCharSelect}
+        isUnlocked={isUnlocked}
+        stats={stats}
+      />
+    );
+  }
 
     if (gameOver && audioInitializedRef.current) {
       audioEngineRef.current.stop();
@@ -77,7 +95,7 @@ function App() {
     restartGame();
   };
 
-  if (!gameStarted) {
+  if (!gameStarted && !showCharSelect) {
     return <StartScreen onStart={handleStart} />;
   }
 
@@ -97,22 +115,27 @@ function App() {
         npcs={npcs}
         tileSize={TILE_SIZE}
         mapSize={MAP_SIZE}
+        activeMarquee={activeMarquee}
+        customPlayerSpritesheets={customPlayerSpritesheets}
         playerUpgrades={playerUpgrades}
         chatGPTTrackerCooldown={chatGPTTrackerCooldown}
+        nearNPC={nearNPC}
       />
 
-      {nearNPC && !shopOpen && (
-        <div className="text-white text-lg font-bold animate-pulse">
-          Press E to open shop
-        </div>
-      )}
+      {showCharSelect && (
+      <CharacterSelect
+        onSelect={onCharSelect}
+        isUnlocked={isUnlocked}
+        stats={stats}
+      />
+    )}
 
       <Shop
         isOpen={shopOpen}
         playerEgo={player?.score || 0}
         shopItems={shopItems}
         onPurchase={handlePurchase}
-        onClose={() => {}}
+        onClose={closeShop}
       />
 
       {gameOver && player && (

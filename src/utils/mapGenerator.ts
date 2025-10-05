@@ -17,6 +17,7 @@ export class MapGenerator {
     this.generateCorridors();
     this.smoothWalls();
     this.generateStaffRooms();
+    this.ensureConnectivity();
     return this.map;
   }
 
@@ -131,6 +132,123 @@ export class MapGenerator {
       }
     }
     return count;
+  }
+
+  private ensureConnectivity(): void {
+    const walkables: Position[] = [];
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        if (this.map[y][x] === TileType.FLOOR || this.map[y][x] === TileType.STAFF_ROOM) {
+          walkables.push({ x, y });
+        }
+      }
+    }
+
+    if (walkables.length === 0) return;
+
+    const components: Position[][] = [];
+    const globalVisited = new Set<string>();
+
+    for (const pos of walkables) {
+      const posKey = this.getKey(pos.x, pos.y);
+      if (!globalVisited.has(posKey)) {
+        const component: Position[] = [];
+        this.floodFill(pos, globalVisited, component);
+        components.push(component);
+      }
+    }
+
+    if (components.length <= 1) return;
+
+    // Find largest component
+    let mainIndex = 0;
+    let maxSize = components[0].length;
+    for (let i = 1; i < components.length; i++) {
+      if (components[i].length > maxSize) {
+        maxSize = components[i].length;
+        mainIndex = i;
+      }
+    }
+
+    const mainComponent = components[mainIndex];
+    components.splice(mainIndex, 1);
+
+    // Connect each other component to main
+    for (const component of components) {
+      if (component.length > 0 && mainComponent.length > 0) {
+        const randomMain = mainComponent[Math.floor(Math.random() * mainComponent.length)];
+        const randomComp = component[Math.floor(Math.random() * component.length)];
+        this.carvePath(randomMain, randomComp);
+      }
+    }
+  }
+
+  private floodFill(start: Position, visited: Set<string>, component: Position[]): void {
+    const queue: Position[] = [{ x: start.x, y: start.y }];
+    const startKey = this.getKey(start.x, start.y);
+    visited.add(startKey);
+    component.push(start);
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const dirs = [
+        { dx: 0, dy: -1 },
+        { dx: 0, dy: 1 },
+        { dx: -1, dy: 0 },
+        { dx: 1, dy: 0 }
+      ];
+
+      for (const dir of dirs) {
+        const nx = current.x + dir.dx;
+        const ny = current.y + dir.dy;
+        if (
+          nx >= 0 &&
+          nx < this.width &&
+          ny >= 0 &&
+          ny < this.height &&
+          (this.map[ny][nx] === TileType.FLOOR || this.map[ny][nx] === TileType.STAFF_ROOM) &&
+          !visited.has(this.getKey(nx, ny))
+        ) {
+          const nkey = this.getKey(nx, ny);
+          visited.add(nkey);
+          const npos: Position = { x: nx, y: ny };
+          component.push(npos);
+          queue.push(npos);
+        }
+      }
+    }
+  }
+
+  private getKey(x: number, y: number): string {
+    return `${x},${y}`;
+  }
+
+  private carvePath(p1: Position, p2: Position): void {
+    // Horizontal leg
+    const minX = Math.min(p1.x, p2.x);
+    const maxX = Math.max(p1.x, p2.x);
+    const horY = p1.y;
+    for (let x = minX; x <= maxX; x++) {
+      [-1, 0, 1].forEach(dy => {
+        const ny = horY + dy;
+        if (ny >= 0 && ny < this.height && x >= 0 && x < this.width) {
+          this.map[ny][x] = TileType.FLOOR;
+        }
+      });
+    }
+
+    // Vertical leg
+    const minY = Math.min(p1.y, p2.y);
+    const maxY = Math.max(p1.y, p2.y);
+    const verX = p2.x;
+    for (let y = minY; y <= maxY; y++) {
+      [-1, 0, 1].forEach(dx => {
+        const nx = verX + dx;
+        if (nx >= 0 && nx < this.width && y >= 0 && y < this.height) {
+          this.map[y][nx] = TileType.FLOOR;
+        }
+      });
+    }
   }
 
   findSpawnPoint(): { x: number; y: number } {

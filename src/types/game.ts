@@ -1,3 +1,4 @@
+// game.ts (updated for player pronoun, custom sprite, npc loader/charIndex)
 export interface Position {
   x: number;
   y: number;
@@ -18,6 +19,9 @@ export interface Player extends Character {
   score: number;
   isAuraFarming: boolean;
   lastMoveTime: number;
+  pronoun: string;
+  isCustomSprite: boolean;
+  spriteSheetUrl?: string;
 }
 
 export enum StudentState {
@@ -64,6 +68,8 @@ export interface NPC extends Character {
   targetPosition: Position | null;
   idleMoving: boolean;
   roomBounds: { minX: number; maxX: number; minY: number; maxY: number } | null;
+  loaderType: 'albedo' | 'supports';
+  charIndex: number;
 }
 
 export interface ShopItem {

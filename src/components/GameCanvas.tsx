@@ -13,91 +13,107 @@ interface GameCanvasProps {
   mapSize: number;
   playerUpgrades: PlayerUpgrades;
   chatGPTTrackerCooldown: number;
+  activeMarquee: { text: string; startTime: number } | null;
+  customPlayerSpritesheets: Record<string, string>;
+  nearNPC: boolean;
 }
 
 const VIEWPORT_WIDTH = 800;
 const VIEWPORT_HEIGHT = 600;
 const SPRITE_URL = 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_freeschooluniforms.png';
-const NPC_SPRITE_URL = 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_albedo.png';
+const ALBEDO_SPRITE_URL = 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_albedo.png';
+const SUPPORTS_SPRITE_URL = 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_supports.png';
 
-export const GameCanvas = ({ gameMap, player, students, coins, npcs, tileSize, mapSize, playerUpgrades, chatGPTTrackerCooldown }: GameCanvasProps) => {
+export const GameCanvas = ({ gameMap, player, students, coins, npcs, tileSize, mapSize, playerUpgrades, chatGPTTrackerCooldown, activeMarquee, customPlayerSpritesheets, nearNPC }: GameCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const spriteLoaderRef = useRef<SpriteLoader>(new SpriteLoader());
-  const npcSpriteLoaderRef = useRef<NPCSpriteLoader>(new NPCSpriteLoader());
+  const albedoLoaderRef = useRef<NPCSpriteLoader>(new NPCSpriteLoader('albedo'));
+  const supportsLoaderRef = useRef<NPCSpriteLoader>(new NPCSpriteLoader('supports'));
+  const customPlayerLoadersRef = useRef<Map<string, NPCSpriteLoader>>(new Map());
   const spritesLoadedRef = useRef(false);
   const npcSpritesLoadedRef = useRef(false);
+  const customLoadedRef = useRef(false);
 
   useEffect(() => {
     const loadSprites = async () => {
       try {
         await spriteLoaderRef.current.load(SPRITE_URL);
         spritesLoadedRef.current = true;
-        await npcSpriteLoaderRef.current.load(NPC_SPRITE_URL);
+        await albedoLoaderRef.current.load(ALBEDO_SPRITE_URL);
+        await supportsLoaderRef.current.load(SUPPORTS_SPRITE_URL);
         npcSpritesLoadedRef.current = true;
+
+        // Preload custom player sprites
+        Object.values(customPlayerSpritesheets).forEach((url) => {
+          if (!url.startsWith('http')) return; // skip default
+          const loader = new NPCSpriteLoader('single');
+          loader.load(url).then(() => {
+            customPlayerLoadersRef.current.set(url, loader);
+          });
+        });
+        customLoadedRef.current = true;
       } catch (error) {
         console.error('Failed to load sprites:', error);
       }
     };
 
     loadSprites();
-  }, []);
-
-  
+  }, [customPlayerSpritesheets]);
 
   useEffect(() => {
-  let interval: NodeJS.Timeout | null = null;
+    let interval: NodeJS.Timeout | null = null;
 
-  const movePlayer = (dir: string) => {
-    switch (dir) {
-      case "up":
-        handleKeyDown({ key: "ArrowUp" } as KeyboardEvent);
-        break;
-      case "down":
-        handleKeyDown({ key: "ArrowDown" } as KeyboardEvent);
-        break;
-      case "left":
-        handleKeyDown({ key: "ArrowLeft" } as KeyboardEvent);
-        break;
-      case "right":
-        handleKeyDown({ key: "ArrowRight" } as KeyboardEvent);
-        break;
-    }
-  };
+    const movePlayer = (dir: string) => {
+      switch (dir) {
+        case "up":
+          handleKeyDown({ key: "ArrowUp" } as KeyboardEvent);
+          break;
+        case "down":
+          handleKeyDown({ key: "ArrowDown" } as KeyboardEvent);
+          break;
+        case "left":
+          handleKeyDown({ key: "ArrowLeft" } as KeyboardEvent);
+          break;
+        case "right":
+          handleKeyDown({ key: "ArrowRight" } as KeyboardEvent);
+          break;
+      }
+    };
 
-  const startMoving = (dir: string) => {
-    movePlayer(dir); // immediate move
-    interval = setInterval(() => movePlayer(dir), 150); // repeat every 150ms
-  };
+    const startMoving = (dir: string) => {
+      movePlayer(dir); // immediate move
+      interval = setInterval(() => movePlayer(dir), 150); // repeat every 150ms
+    };
 
-  const stopMoving = () => {
-    if (interval) {
-      clearInterval(interval);
-      interval = null;
-    }
-  };
+    const stopMoving = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
 
-  ["up", "down", "left", "right"].forEach((dir) => {
-    const btn = document.getElementById(dir);
-    if (btn) {
-      btn.addEventListener("touchstart", () => startMoving(dir));
-      btn.addEventListener("mousedown", () => startMoving(dir));
-
-      btn.addEventListener("touchend", stopMoving);
-      btn.addEventListener("mouseup", stopMoving);
-      btn.addEventListener("mouseleave", stopMoving); // for when finger slides off
-    }
-  });
-
-  return () => {
-    stopMoving();
     ["up", "down", "left", "right"].forEach((dir) => {
       const btn = document.getElementById(dir);
       if (btn) {
-        btn.replaceWith(btn.cloneNode(true)); // remove old listeners
+        btn.addEventListener("touchstart", () => startMoving(dir));
+        btn.addEventListener("mousedown", () => startMoving(dir));
+
+        btn.addEventListener("touchend", stopMoving);
+        btn.addEventListener("mouseup", stopMoving);
+        btn.addEventListener("mouseleave", stopMoving); // for when finger slides off
       }
     });
-  };
-}, []);
+
+    return () => {
+      stopMoving();
+      ["up", "down", "left", "right"].forEach((dir) => {
+        const btn = document.getElementById(dir);
+        if (btn) {
+          btn.replaceWith(btn.cloneNode(true)); // remove old listeners
+        }
+      });
+    };
+  }, []);
 
   // Shared helper for all chat bubbles
 const drawChatBubble = (
@@ -180,9 +196,8 @@ const drawChatBubble = (
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx || !player || !spritesLoadedRef.current || !npcSpritesLoadedRef.current) return;
 
     ctx.imageSmoothingEnabled = false;
     // add shadow below character sprites
@@ -288,19 +303,21 @@ const drawChatBubble = (
 
         drawShadow(ctx, screenX, screenY, 2.5);
 
-        npcSpriteLoaderRef.current.drawSprite(
-          ctx,
-          npc.direction,
-          npc.animationFrame,
-          npc.isMoving,
-          screenX,
-          screenY,
-          2.5
-        );
+       const loader = npc.loaderType === 'albedo' ? albedoLoaderRef.current : supportsLoaderRef.current;
+      loader.drawSprite(
+        ctx,
+        npc.direction,
+        npc.animationFrame,
+        npc.isMoving,
+        screenX,
+        screenY,
+        2.5,
+        npc.charIndex
+      );
 
-        if (npc.sayingTime > 0) {
-          drawChatBubble(ctx, npc.currentSaying, screenX, screenY);
-        }
+      if (npc.sayingTime > 0) {
+        drawChatBubble(ctx, npc.currentSaying, screenX, screenY);
+      }
 
       });
 
@@ -337,6 +354,21 @@ const drawChatBubble = (
 
       drawShadow(ctx, playerScreenX, playerScreenY, 2.5);
 
+      if (player.isCustomSprite && player.spriteSheetUrl) {
+        const loader = customPlayerLoadersRef.current.get(player.spriteSheetUrl);
+        if (loader) {
+          loader.drawSprite(
+            ctx,
+            player.direction,
+            player.animationFrame,
+            player.isMoving,
+            playerScreenX,
+            playerScreenY,
+            2.5,
+            0 // charIndex 0 for single
+          );
+        }
+    } else {
       spriteLoaderRef.current.drawSprite(
         ctx,
         player.spriteIndex,
@@ -347,6 +379,7 @@ const drawChatBubble = (
         playerScreenY,
         2.5
       );
+    }
 
       if (player.isAuraFarming) {
         const time = Date.now() / 1000;
@@ -416,7 +449,49 @@ const drawChatBubble = (
         ctx.fillText(Math.ceil(chatGPTTrackerCooldown).toString(), padding + boxSize / 2, padding + boxSize / 2);
       }
     }
-  }, [gameMap, player, students, coins, npcs, tileSize, mapSize, chatGPTTrackerCooldown, playerUpgrades]);
+
+     // Marquee
+    if (activeMarquee) {
+      const elapsed = Date.now() - activeMarquee.startTime;
+      const scrollSpeed = 100; // px per second
+      let x = VIEWPORT_WIDTH - (elapsed / 1000) * scrollSpeed;
+      const y = VIEWPORT_HEIGHT - 30;
+      ctx.font = '12px "Press Start 2P", monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      const metrics = ctx.measureText(activeMarquee.text);
+      const textWidth = metrics.width;
+      if (x + textWidth < 0) {
+        // Parent will clear via state
+      } else {
+        ctx.fillStyle = 'blue';
+        ctx.fillRect(x, y - 5, textWidth + 20, 12 + 10);
+        ctx.fillStyle = 'white';
+        ctx.fillText(activeMarquee.text, x, y);
+      }
+    }
+
+    // Press E text overlay
+    if (nearNPC) {
+      ctx.fillStyle = 'rgba(0, 5, 255, 0.9)';  // text font color
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';     // text font outline
+      ctx.lineWidth = 2;
+      ctx.font = 'bold 16px "Press Start 2P", monospace';  // Match game font
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+    
+      const text = 'Press E to open shop';
+      const metrics = ctx.measureText(text);
+      const textX = VIEWPORT_WIDTH / 2;
+      const textY = 20;  // Near top edge, with padding
+    
+      // Outline (simple stroke for pixel-art feel)
+      ctx.strokeText(text, textX, textY);
+      ctx.fillText(text, textX, textY);
+    }
+    
+  }, [gameMap, player, students, coins, npcs, tileSize, mapSize, chatGPTTrackerCooldown, playerUpgrades, activeMarquee, customPlayerSpritesheets, nearNPC]);
+
 
   return <canvas ref={canvasRef} width={VIEWPORT_WIDTH} height={VIEWPORT_HEIGHT} className="border-4 border-gray-800 rounded" />;
 };

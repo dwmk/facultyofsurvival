@@ -24,7 +24,7 @@ export const HUD = ({ player, survivalTime }: HUDProps) => {
           <div className="text-xs text-gray-400">Mental Health</div>
           <div className="w-48 h-6 bg-gray-700 rounded-full overflow-hidden border-2 border-gray-600">
             <div
-              className="h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-100"
+              className="h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-0"
               style={{ width: `${healthPercentage}%` }}
             />
           </div>

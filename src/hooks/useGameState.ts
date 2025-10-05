@@ -28,6 +28,7 @@ const CHATGPT_TRACKER_RADIUS = TILE_SIZE * 8;
 const CHATGPT_TRACKER_FORCE = 15;
 const CHATGPT_TRACKER_ACTIVE_DURATION = 3; // seconds the fear wave lasts
 const CHATGPT_FEAR_SPEED_MULTIPLIER = 2.8; // how fast students run away
+const MARQUEE_COOLDOWN = 35000;
 
 const NPC_SAYINGS = [
   'Keep up the good work!',
@@ -67,6 +68,26 @@ const SHOP_ITEMS: ShopItem[] = [
   },
 ];
 
+export const CHARACTERS = {
+  default: { name: 'Mr. Tom Ku', pronoun: 'Sir', spritesheet: 'default' as const, unlock_attribute: 'none' as const, unlock_amount: null as null },
+  famille: { name: 'Ms. Pookie', pronoun: 'Ma\'am', spritesheet: 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_famille.png' as const, unlock_attribute: 'totalGameovers' as const, unlock_amount: 10 },
+  tsukasa: { name: 'Club Pres.', pronoun: 'Bro', spritesheet: 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_tsukasa.png' as const, unlock_attribute: 'totalEgo' as const, unlock_amount: 1000 },
+  angrynerd: { name: 'Class Rep.', pronoun: 'CR', spritesheet: 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_angrynerd.png' as const, unlock_attribute: 'totalSurvival' as const, unlock_amount: 1000 },
+  greed: { name: 'Professor', pronoun: 'Sir', spritesheet: 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_greed.png' as const, unlock_attribute: 'totalEgo' as const, unlock_amount: 5000 },
+  darion: { name: 'Headmaster', pronoun: 'Sir', spritesheet: 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_darion.png' as const, unlock_attribute: 'totalPlaytime' as const, unlock_amount: 100 * 3600 },
+} as const;
+
+type UnlockAttribute = 'none' | 'totalEgo' | 'totalPlaytime' | 'totalSurvival' | 'totalGameovers';
+
+type Stats = {
+  totalEgo: number;
+  totalPlaytime: number; // seconds
+  totalSurvival: number; // seconds
+  totalGameovers: number;
+};
+
+const STORAGE_KEY = 'facultySurvivalStats';
+
 export const useGameState = () => {
   const [gameMap, setGameMap] = useState<TileType[][]>([]);
   const [player, setPlayer] = useState<Player | null>(null);
@@ -85,6 +106,12 @@ export const useGameState = () => {
     chatGPTTrackers: 0,
   });
 
+  const [selectedCharacter, setSelectedCharacter] = useState<keyof typeof CHARACTERS>('default');
+  const [showCharSelect, setShowCharSelect] = useState(false);
+  const [stats, setStats] = useState<Stats>({ totalEgo: 0, totalPlaytime: 0, totalSurvival: 0, totalGameovers: 0 });
+  const [activeMarquee, setActiveMarquee] = useState<{ text: string; startTime: number } | null>(null);
+  const [customPlayerSpritesheets, setCustomPlayerSpritesheets] = useState<Record<string, string>>({});
+
   const keysPressed = useRef<Set<string>>(new Set());
   const lastDamageTime = useRef<number>(0);
   const animationFrame = useRef<number>(0);
@@ -95,9 +122,42 @@ export const useGameState = () => {
   const chatGPTTrackerCooldown = useRef<number>(0);
   const lastChatGPTUseTime = useRef<number>(0);
   const chatGPTActiveUntil = useRef<number>(0);
+  const accumulatedPlaytimeRef = useRef(0);
+  const lastCommRef = useRef(0);
 
+  // Load stats
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      setStats(JSON.parse(saved));
+    }
+  }, []);
 
-  const initializeGame = useCallback(() => {
+  // Save stats
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
+  }, [stats]);
+
+  const isUnlocked = useCallback((charId: keyof typeof CHARACTERS): boolean => {
+    const char = CHARACTERS[charId];
+    if (char.unlock_attribute === 'none') return true;
+    const amount = char.unlock_amount!;
+    const current = stats[char.unlock_attribute as UnlockAttribute];
+    return current >= amount;
+}, [stats]);
+
+  const startGame = useCallback(() => {
+    setShowCharSelect(true);
+  }, []);
+
+  const onCharSelect = useCallback((charId: keyof typeof CHARACTERS) => {
+    setSelectedCharacter(charId);
+    setShowCharSelect(false);
+    initializeGame(charId);
+    setGameStarted(true);
+  }, []);
+
+  const initializeGame = useCallback((charId: keyof typeof CHARACTERS = 'default') => {
     const mapGen = new MapGenerator(MAP_SIZE, MAP_SIZE);
     const newMap = mapGen.generate();
     mapRef.current = newMap;
@@ -105,6 +165,8 @@ export const useGameState = () => {
     setGameMap(newMap);
 
     const playerSpawn = mapGen.findSpawnPoint();
+    const char = CHARACTERS[charId];
+    const playerPronoun = char.pronoun;
     const currentTime = Date.now();
     const newPlayer: Player = {
       id: 'player',
@@ -118,13 +180,25 @@ export const useGameState = () => {
       score: 30,
       isAuraFarming: false,
       lastMoveTime: currentTime,
+      pronoun: playerPronoun,
+      isCustomSprite: char.spritesheet !== 'default',
+      spriteSheetUrl: char.spritesheet !== 'default' ? char.spritesheet : undefined,
     };
     setPlayer(newPlayer);
+    accumulatedPlaytimeRef.current = 0;
+
+    // Update custom sheets
+    const sheets: Record<string, string> = {};
+    Object.entries(CHARACTERS).forEach(([id, c]) => {
+      if (c.spritesheet !== 'default') sheets[id] = c.spritesheet;
+    });
+    setCustomPlayerSpritesheets(sheets);
 
     const newStudents: Student[] = [];
     for (let i = 0; i < NUM_STUDENTS; i++) {
       const spawn = mapGen.findSpawnPoint();
-      const complaint = STUDENT_COMPLAINTS[Math.floor(Math.random() * STUDENT_COMPLAINTS.length)];
+      let complaint = STUDENT_COMPLAINTS[Math.floor(Math.random() * STUDENT_COMPLAINTS.length)];
+      complaint = complaint.replace(/Sir/g, playerPronoun);
       newStudents.push({
         id: `student-${i}`,
         position: { x: spawn.x * TILE_SIZE + TILE_SIZE / 2, y: spawn.y * TILE_SIZE + TILE_SIZE / 2 },
@@ -156,28 +230,39 @@ export const useGameState = () => {
     setCoins(newCoins);
 
     const staffRooms = mapGen.getStaffRooms();
-    const newNpcs: NPC[] = staffRooms.map((room, index) => ({
-      id: `npc-${index}`,
-      position: {
-        x: room.center.x * TILE_SIZE,
-        y: room.center.y * TILE_SIZE
-      },
-      direction: Direction.DOWN,
-      spriteIndex: 0,
-      animationFrame: 0,
-      isMoving: false,
-      sayings: NPC_SAYINGS,
-      currentSaying: NPC_SAYINGS[Math.floor(Math.random() * NPC_SAYINGS.length)],
-      sayingTime: 0,
-      targetPosition: null,
-      idleMoving: false,
-      roomBounds: {
-        minX: room.minX * TILE_SIZE,
-        maxX: room.maxX * TILE_SIZE,
-        minY: room.minY * TILE_SIZE,
-        maxY: room.maxY * TILE_SIZE,
-      },
-    }));
+    const newNpcs: NPC[] = staffRooms.map((room, index) => {
+      const loaderTypes = ['albedo', 'supports'] as const;
+      const loaderType = loaderTypes[Math.floor(Math.random() * loaderTypes.length)];
+      let charIndex = loaderType === 'albedo' ? 0 : Math.floor(Math.random() * 5); // 0 for albedo; 0-4 for supports
+      if (loaderType === 'supports') {
+        const valid = [0, 1, 2, 4, 5];
+        charIndex = valid[Math.floor(Math.random() * valid.length)];
+      }
+      return {
+        id: `npc-${index}`,
+        position: {
+          x: room.center.x * TILE_SIZE,
+          y: room.center.y * TILE_SIZE
+        },
+        direction: Direction.DOWN,
+        spriteIndex: 0,
+        animationFrame: 0,
+        isMoving: false,
+        sayings: NPC_SAYINGS,
+        currentSaying: NPC_SAYINGS[Math.floor(Math.random() * NPC_SAYINGS.length)],
+        sayingTime: 0,
+        targetPosition: null,
+        idleMoving: false,
+        roomBounds: {
+          minX: room.minX * TILE_SIZE,
+          maxX: room.maxX * TILE_SIZE,
+          minY: room.minY * TILE_SIZE,
+          maxY: room.maxY * TILE_SIZE,
+        },
+        loaderType,
+        charIndex,
+      };
+    });
     setNpcs(newNpcs);
 
     setGameOver(false);
@@ -197,17 +282,12 @@ export const useGameState = () => {
     chatGPTTrackerCooldown.current = 0;
     lastChatGPTUseTime.current = 0;
     audioEngineRef.current.setBossMode(false);
-  }, []);
-
-  const startGame = useCallback(() => {
-    initializeGame();
-    setGameStarted(true);
-  }, [initializeGame]);
+  }, [CHARACTERS]);
 
   const restartGame = useCallback(() => {
-    initializeGame();
+    initializeGame(selectedCharacter);
     setGameStarted(true);
-  }, [initializeGame]);
+  }, [initializeGame, selectedCharacter]);
 
   const isWalkable = useCallback((x: number, y: number): boolean => {
     const tileX = Math.floor(x / TILE_SIZE);
@@ -388,6 +468,7 @@ export const useGameState = () => {
       }
 
       setSurvivalTime(t => t + 1);
+      accumulatedPlaytimeRef.current += 1 / 60;
 
       setNpcs(prevNpcs => {
         if (!player) return prevNpcs;
@@ -455,7 +536,7 @@ export const useGameState = () => {
 
       let isNear = false;
       npcs.forEach(npc => {
-        if (player && getDistance(npc.position, player.position) < TILE_SIZE * 2) {
+        if (player && getDistance(npc.position, player.position) < TILE_SIZE * 3) {
           isNear = true;
         }
       });
@@ -537,11 +618,13 @@ export const useGameState = () => {
       setStudents(prevStudents => {
         if (!player) return prevStudents;
 
-        let studentsToUpdate = [...prevStudents];
+        let communicationHappened = false;
 
         // --- ChatGPT Tracker fear effect ---
         const now = Date.now();
         const trackerActive = now < chatGPTActiveUntil.current;
+        
+        let studentsToUpdate = [...prevStudents];
         
         if (trackerActive) {
           studentsToUpdate = studentsToUpdate.map(student => {
@@ -564,7 +647,7 @@ export const useGameState = () => {
                   return {
                     ...student,
                     position: { x: newX, y: newY },
-                    state: StudentState.FLEEING, // optional new state
+                    state: StudentState.FLEEING,
                     chasing: false,
                     target: null,
                   };
@@ -633,6 +716,7 @@ export const useGameState = () => {
 
                 nearestStudent.groupId = groupId;
                 nearestStudent.state = StudentState.INFORMED;
+                communicationHappened = true;
               } else {
                 newStudent.state = StudentState.SEARCHING;
                 newStudent.chasing = false;
@@ -696,6 +780,7 @@ export const useGameState = () => {
                   newStudent.groupId = groupId;
                   other.state = StudentState.INFORMED;
                   newStudent.communicationCooldown = 120;
+                  communicationHappened = true;
                 }
               }
             });
@@ -734,6 +819,15 @@ export const useGameState = () => {
 
           return newStudent;
         });
+
+        if (communicationHappened && Date.now() - lastCommRef.current > MARQUEE_COOLDOWN) {
+          lastCommRef.current = Date.now();
+          const x = Math.floor(Math.random() * 99) + 1;
+          setActiveMarquee({
+            text: `${x} new posts have appeared on BRAX Faculty Course Review group on social media about you!`,
+            startTime: Date.now(),
+          });
+        }
 
         return updatedStudents;
       });
@@ -778,6 +872,40 @@ export const useGameState = () => {
     return () => clearInterval(gameLoop);
   }, [gameStarted, gameOver, player, isWalkable, hasLineOfSight, moveTowards, shopOpen, playerUpgrades, npcs]);
 
+  // Update stats on game over
+  useEffect(() => {
+    if (gameOver && player) {
+      setStats((prev) => ({
+        ...prev,
+        totalGameovers: prev.totalGameovers + 1,
+        totalSurvival: prev.totalSurvival + (survivalTime / 60),
+        totalEgo: prev.totalEgo + player.score,
+        totalPlaytime: prev.totalPlaytime + accumulatedPlaytimeRef.current,
+      }));
+    }
+  }, [gameOver, player, survivalTime]);
+
+  // Clear marquee when off screen
+  useEffect(() => {
+    if (!activeMarquee) return;
+    const SCROLL_SPEED = 100; // px per second (matches GameCanvas drawing)
+    const ESTIMATED_PX_PER_CHAR = 8; // Approximation for '12px "Press Start 2P", monospace' (adjust if needed)
+    const ADDITIONAL_WAIT_MS = 20000; // 20 seconds after reaching other side
+    const viewportWidth = window.innerWidth; // Dynamic screen/viewport width; falls back to canvas if needed
+  
+    const estimatedTextWidth = activeMarquee.text.length * ESTIMATED_PX_PER_CHAR;
+    const timeToCrossMs = ((viewportWidth + estimatedTextWidth) / SCROLL_SPEED) * 1000;
+    const clearTime = activeMarquee.startTime + timeToCrossMs + ADDITIONAL_WAIT_MS;
+  
+    const interval = setInterval(() => {
+      if (Date.now() > clearTime) {
+        setActiveMarquee(null);
+      }
+    }, 100);
+
+  return () => clearInterval(interval);
+}, [activeMarquee]);
+
   return {
     gameMap,
     player,
@@ -792,6 +920,7 @@ export const useGameState = () => {
     restartGame,
     shopOpen,
     nearNPC,
+    closeShop: () => setShopOpen(false),
     shopItems: SHOP_ITEMS.map(item => ({
       ...item,
       purchased: item.id === 'chatgpt_tracker' ? playerUpgrades.chatGPTTrackers : undefined,
@@ -801,5 +930,13 @@ export const useGameState = () => {
     chatGPTTrackerCooldown: Math.max(0, chatGPTTrackerCooldown.current),
     TILE_SIZE,
     MAP_SIZE,
+    selectedCharacter,
+    showCharSelect,
+    onCharSelect,
+    isUnlocked,
+    CHARACTERS,
+    stats,
+    activeMarquee,
+    customPlayerSpritesheets,
   };
 };
