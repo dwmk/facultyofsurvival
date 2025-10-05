@@ -1,9 +1,10 @@
-import { TileType } from '../types/game';
+import { TileType, Position } from '../types/game';
 
 export class MapGenerator {
   private width: number;
   private height: number;
   private map: TileType[][];
+  private staffRooms: Array<{ minX: number; maxX: number; minY: number; maxY: number; center: Position }> = [];
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -15,7 +16,39 @@ export class MapGenerator {
     this.generateRooms();
     this.generateCorridors();
     this.smoothWalls();
+    this.generateStaffRooms();
     return this.map;
+  }
+
+  getStaffRooms() {
+    return this.staffRooms;
+  }
+
+  private generateStaffRooms(): void {
+    const numStaffRooms = 2 + Math.floor(Math.random() * 2);
+
+    for (let i = 0; i < numStaffRooms; i++) {
+      const roomWidth = 6 + Math.floor(Math.random() * 4);
+      const roomHeight = 6 + Math.floor(Math.random() * 4);
+      const x = 2 + Math.floor(Math.random() * (this.width - roomWidth - 4));
+      const y = 2 + Math.floor(Math.random() * (this.height - roomHeight - 4));
+
+      for (let ry = y; ry < y + roomHeight; ry++) {
+        for (let rx = x; rx < x + roomWidth; rx++) {
+          if (ry >= 0 && ry < this.height && rx >= 0 && rx < this.width) {
+            this.map[ry][rx] = TileType.STAFF_ROOM;
+          }
+        }
+      }
+
+      this.staffRooms.push({
+        minX: x,
+        maxX: x + roomWidth - 1,
+        minY: y,
+        maxY: y + roomHeight - 1,
+        center: { x: (x + x + roomWidth) / 2, y: (y + y + roomHeight) / 2 }
+      });
+    }
   }
 
   private generateRooms(): void {

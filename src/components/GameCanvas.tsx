@@ -1,30 +1,39 @@
 import { useEffect, useRef } from 'react';
-import { Player, Student, Coin, TileType, StudentState } from '../types/game';
+import { Player, Student, Coin, TileType, StudentState, NPC, PlayerUpgrades } from '../types/game';
 import { SpriteLoader } from '../utils/spriteLoader';
+import { NPCSpriteLoader } from '../utils/npcSpriteLoader';
 
 interface GameCanvasProps {
   gameMap: TileType[][];
   player: Player | null;
   students: Student[];
   coins: Coin[];
+  npcs: NPC[];
   tileSize: number;
   mapSize: number;
+  playerUpgrades: PlayerUpgrades;
+  chatGPTTrackerCooldown: number;
 }
 
 const VIEWPORT_WIDTH = 800;
 const VIEWPORT_HEIGHT = 600;
 const SPRITE_URL = 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_freeschooluniforms.png';
+const NPC_SPRITE_URL = 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_albedo.png';
 
-export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize }: GameCanvasProps) => {
+export const GameCanvas = ({ gameMap, player, students, coins, npcs, tileSize, mapSize, playerUpgrades, chatGPTTrackerCooldown }: GameCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const spriteLoaderRef = useRef<SpriteLoader>(new SpriteLoader());
+  const npcSpriteLoaderRef = useRef<NPCSpriteLoader>(new NPCSpriteLoader());
   const spritesLoadedRef = useRef(false);
+  const npcSpritesLoadedRef = useRef(false);
 
   useEffect(() => {
     const loadSprites = async () => {
       try {
         await spriteLoaderRef.current.load(SPRITE_URL);
         spritesLoadedRef.current = true;
+        await npcSpriteLoaderRef.current.load(NPC_SPRITE_URL);
+        npcSpritesLoadedRef.current = true;
       } catch (error) {
         console.error('Failed to load sprites:', error);
       }
@@ -90,6 +99,83 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
   };
 }, []);
 
+  // Shared helper for all chat bubbles
+const drawChatBubble = (
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  screenX: number,
+  screenY: number,
+  options?: {
+    font?: string;
+    textColor?: string;
+    fillColor?: string;
+    strokeColor?: string;
+    maxWidth?: number;
+    lineHeight?: number;
+    padding?: number;
+  }
+) => {
+  const {
+    font = '8px "Press Start 2P", monospace',
+    textColor = '#333',
+    fillColor = 'rgba(255, 255, 255, 0.95)',
+    strokeColor = '#333',
+    maxWidth = 180,
+    lineHeight = 12,
+    padding = 8,
+  } = options || {};
+
+  ctx.font = font;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = '';
+
+  words.forEach(word => {
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  });
+  if (currentLine) lines.push(currentLine);
+
+  const bubbleWidth = Math.min(maxWidth + padding * 2, 200);
+  const bubbleHeight = lines.length * lineHeight + padding * 2;
+  const bubbleX = screenX + 40 - bubbleWidth / 2;
+  const bubbleY = screenY - bubbleHeight - 15;
+
+  // Bubble box
+  ctx.fillStyle = fillColor;
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  // Tail triangle
+  ctx.fillStyle = fillColor;
+  ctx.beginPath();
+  ctx.moveTo(bubbleX + bubbleWidth / 2 - 5, bubbleY + bubbleHeight);
+  ctx.lineTo(bubbleX + bubbleWidth / 2, bubbleY + bubbleHeight + 8);
+  ctx.lineTo(bubbleX + bubbleWidth / 2 + 5, bubbleY + bubbleHeight);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Text
+  ctx.fillStyle = textColor;
+  lines.forEach((line, i) => {
+    ctx.fillText(line, bubbleX + bubbleWidth / 2, bubbleY + padding + i * lineHeight);
+  });
+};
+
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -143,6 +229,13 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
           ctx.strokeStyle = '#d0d0d0';
           ctx.lineWidth = 1;
           ctx.strokeRect(screenX, screenY, tileSize, tileSize);
+        } else if (gameMap[y]?.[x] === TileType.STAFF_ROOM) {
+          ctx.fillStyle = (x + y) % 2 === 0 ? '#FFD700' : '#4169E1';
+          ctx.fillRect(screenX, screenY, tileSize, tileSize);
+
+          ctx.strokeStyle = '#DAA520';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(screenX, screenY, tileSize, tileSize);
         } else {
           ctx.fillStyle = '#8B4513';
           ctx.fillRect(screenX, screenY, tileSize, tileSize);
@@ -184,7 +277,33 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
       ctx.fill();
     });
 
-    if (spritesLoadedRef.current) {
+    if (spritesLoadedRef.current && npcSpritesLoadedRef.current) {
+      npcs.forEach(npc => {
+        const screenX = npc.position.x - cameraX - 40;
+        const screenY = npc.position.y - cameraY - 40;
+
+        if (screenX < -100 || screenX > VIEWPORT_WIDTH + 100 || screenY < -100 || screenY > VIEWPORT_HEIGHT + 100) {
+          return;
+        }
+
+        drawShadow(ctx, screenX, screenY, 2.5);
+
+        npcSpriteLoaderRef.current.drawSprite(
+          ctx,
+          npc.direction,
+          npc.animationFrame,
+          npc.isMoving,
+          screenX,
+          screenY,
+          2.5
+        );
+
+        if (npc.sayingTime > 0) {
+          drawChatBubble(ctx, npc.currentSaying, screenX, screenY);
+        }
+
+      });
+
       students.forEach(student => {
         const screenX = student.position.x - cameraX - 40;
         const screenY = student.position.y - cameraY - 40;
@@ -208,58 +327,9 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
 
         if (student.state === StudentState.CHASING || student.state === StudentState.INFORMED) {
           const displayText = student.state === StudentState.INFORMED ? '...' : student.complaint;
-
-          ctx.font = '8px "Press Start 2P", monospace';
-          const maxWidth = 180;
-          const words = displayText.split(' ');
-          const lines: string[] = [];
-          let currentLine = '';
-
-          words.forEach(word => {
-            const testLine = currentLine ? `${currentLine} ${word}` : word;
-            const metrics = ctx.measureText(testLine);
-            if (metrics.width > maxWidth && currentLine) {
-              lines.push(currentLine);
-              currentLine = word;
-            } else {
-              currentLine = testLine;
-            }
-          });
-          if (currentLine) lines.push(currentLine);
-
-          const lineHeight = 12;
-          const padding = 8;
-          const bubbleWidth = Math.min(maxWidth + padding * 2, 200);
-          const bubbleHeight = lines.length * lineHeight + padding * 2;
-          const bubbleX = screenX + 40 - bubbleWidth / 2;
-          const bubbleY = screenY - bubbleHeight - 15;
-
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-          ctx.strokeStyle = '#333';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.roundRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight, 8);
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-          ctx.beginPath();
-          ctx.moveTo(bubbleX + bubbleWidth / 2 - 5, bubbleY + bubbleHeight);
-          ctx.lineTo(bubbleX + bubbleWidth / 2, bubbleY + bubbleHeight + 8);
-          ctx.lineTo(bubbleX + bubbleWidth / 2 + 5, bubbleY + bubbleHeight);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.fillStyle = '#333';
-          ctx.font = '8px "Press Start 2P", monospace';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'top';
-
-          lines.forEach((line, i) => {
-            ctx.fillText(line, bubbleX + bubbleWidth / 2, bubbleY + padding + i * lineHeight);
-          });
+          drawChatBubble(ctx, displayText, screenX, screenY);
         }
+
       });
 
       const playerScreenX = player.position.x - cameraX - 40;
@@ -304,8 +374,49 @@ export const GameCanvas = ({ gameMap, player, students, coins, tileSize, mapSize
 
         ctx.restore();
       }
+
+      if (chatGPTTrackerCooldown > 0 && chatGPTTrackerCooldown < 5) {
+        const progress = (5 - chatGPTTrackerCooldown) / 5;
+        const radius = progress * 300;
+        const playerScreenX = player.position.x - cameraX - 40;
+        const playerScreenY = player.position.y - cameraY - 40;
+        
+        drawChatBubble(ctx, 'Stop using ChatGPT!', playerScreenX, playerScreenY);
+      }
     }
-  }, [gameMap, player, students, coins, tileSize, mapSize]);
+
+    if (playerUpgrades.chatGPTTrackers > 0) {
+      const iconSize = 80;
+      const padding = 10;
+      const boxSize = iconSize + padding * 2;
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(padding, padding, boxSize, boxSize);
+      ctx.strokeStyle = chatGPTTrackerCooldown > 0 ? '#666' : '#00ff00';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(padding, padding, boxSize, boxSize);
+
+      const img = new Image();
+      img.src = 'https://dewanmukto.github.io/asset/images/gpticon.png';
+      ctx.drawImage(img, padding * 2, padding * 2, iconSize, iconSize);
+
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 16px Arial';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(`x${playerUpgrades.chatGPTTrackers}`, padding + boxSize - 5, padding + boxSize - 5);
+
+      if (chatGPTTrackerCooldown > 0) {
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.6)';
+        ctx.fillRect(padding, padding, boxSize, boxSize);
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 20px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(Math.ceil(chatGPTTrackerCooldown).toString(), padding + boxSize / 2, padding + boxSize / 2);
+      }
+    }
+  }, [gameMap, player, students, coins, npcs, tileSize, mapSize, chatGPTTrackerCooldown, playerUpgrades]);
 
   return <canvas ref={canvasRef} width={VIEWPORT_WIDTH} height={VIEWPORT_HEIGHT} className="border-4 border-gray-800 rounded" />;
 };

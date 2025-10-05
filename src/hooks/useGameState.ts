@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Player, Student, Coin, Direction, TileType, Position, StudentState } from '../types/game';
+import { Player, Student, Coin, Direction, TileType, Position, StudentState, NPC, ShopItem, PlayerUpgrades } from '../types/game';
 import { MapGenerator } from '../utils/mapGenerator';
 import { STUDENT_COMPLAINTS } from '../data/complaints';
 import { AudioEngine } from '../utils/audioEngine';
@@ -7,7 +7,7 @@ import { AudioEngine } from '../utils/audioEngine';
 const MAP_SIZE = 64;
 const TILE_SIZE = 32;
 const BASE_MOVE_SPEED = 6;
-const BASE_STUDENT_SPEED = 5;
+const BASE_STUDENT_SPEED = 4;
 const ANIMATION_SPEED = 10;
 const HEALTH_REGEN_RATE = 0.5;
 const STUDENT_DAMAGE = 5;
@@ -23,16 +23,67 @@ const AURA_FARMING_DELAY = 5;
 const AURA_FARMING_GAIN = 10;
 const EGO_DECAY_RATE = 1;
 const STUDENT_SEPARATION_DISTANCE = TILE_SIZE * 2;
+const CHATGPT_TRACKER_COOLDOWN = 5;
+const CHATGPT_TRACKER_RADIUS = TILE_SIZE * 8;
+const CHATGPT_TRACKER_FORCE = 15;
+const CHATGPT_TRACKER_ACTIVE_DURATION = 3; // seconds the fear wave lasts
+const CHATGPT_FEAR_SPEED_MULTIPLIER = 2.8; // how fast students run away
+
+const NPC_SAYINGS = [
+  'Keep up the good work!',
+  'You\'re doing great!',
+  'Stay strong!',
+  'Education is a noble work!',
+  'You got this!',
+  'Thank you for playing this game!',
+  'All sounds are generated with waves!',
+  'Grab some upgrades from me with "E"'
+];
+
+const SHOP_ITEMS: ShopItem[] = [
+  {
+    id: 'excitement',
+    name: 'Excitement',
+    description: 'Increases your walking speed by 0.5',
+    cost: 500,
+    icon: 'https://dewanmukto.github.io/asset/images/money.jpg',
+    type: 'upgrade',
+  },
+  {
+    id: 'assignments',
+    name: 'Assignments',
+    description: 'Decreases all student speed by 0.5',
+    cost: 300,
+    icon: 'https://dewanmukto.github.io/asset/images/book.png',
+    type: 'upgrade',
+  },
+  {
+    id: 'chatgpt_tracker',
+    name: 'ChatGPT Tracker',
+    description: 'Push students away with Q key',
+    cost: 100,
+    icon: 'https://dewanmukto.github.io/asset/images/gpticon.png',
+    type: 'tool',
+  },
+];
 
 export const useGameState = () => {
   const [gameMap, setGameMap] = useState<TileType[][]>([]);
   const [player, setPlayer] = useState<Player | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [coins, setCoins] = useState<Coin[]>([]);
+  const [npcs, setNpcs] = useState<NPC[]>([]);
   const [gameStarted, setGameStarted] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [survivalTime, setSurvivalTime] = useState(0);
   const [gameOverReason, setGameOverReason] = useState<string>('');
+  const [shopOpen, setShopOpen] = useState(false);
+  const [nearNPC, setNearNPC] = useState(false);
+  const [playerUpgrades, setPlayerUpgrades] = useState<PlayerUpgrades>({
+    speedBoosts: 0,
+    assignmentsPurchased: 0,
+    chatGPTTrackers: 0,
+  });
 
   const keysPressed = useRef<Set<string>>(new Set());
   const lastDamageTime = useRef<number>(0);
@@ -41,6 +92,10 @@ export const useGameState = () => {
   const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
   const lastEgoDecayTime = useRef<number>(0);
   const mapGeneratorRef = useRef<MapGenerator | null>(null);
+  const chatGPTTrackerCooldown = useRef<number>(0);
+  const lastChatGPTUseTime = useRef<number>(0);
+  const chatGPTActiveUntil = useRef<number>(0);
+
 
   const initializeGame = useCallback(() => {
     const mapGen = new MapGenerator(MAP_SIZE, MAP_SIZE);
@@ -100,13 +155,47 @@ export const useGameState = () => {
     }
     setCoins(newCoins);
 
+    const staffRooms = mapGen.getStaffRooms();
+    const newNpcs: NPC[] = staffRooms.map((room, index) => ({
+      id: `npc-${index}`,
+      position: {
+        x: room.center.x * TILE_SIZE,
+        y: room.center.y * TILE_SIZE
+      },
+      direction: Direction.DOWN,
+      spriteIndex: 0,
+      animationFrame: 0,
+      isMoving: false,
+      sayings: NPC_SAYINGS,
+      currentSaying: NPC_SAYINGS[Math.floor(Math.random() * NPC_SAYINGS.length)],
+      sayingTime: 0,
+      targetPosition: null,
+      idleMoving: false,
+      roomBounds: {
+        minX: room.minX * TILE_SIZE,
+        maxX: room.maxX * TILE_SIZE,
+        minY: room.minY * TILE_SIZE,
+        maxY: room.maxY * TILE_SIZE,
+      },
+    }));
+    setNpcs(newNpcs);
+
     setGameOver(false);
     setGameOverReason('');
     setSurvivalTime(0);
+    setShopOpen(false);
+    setNearNPC(false);
+    setPlayerUpgrades({
+      speedBoosts: 0,
+      assignmentsPurchased: 0,
+      chatGPTTrackers: 0,
+    });
     keysPressed.current.clear();
     lastDamageTime.current = 0;
     lastEgoDecayTime.current = Date.now();
     animationFrame.current = 0;
+    chatGPTTrackerCooldown.current = 0;
+    lastChatGPTUseTime.current = 0;
     audioEngineRef.current.setBossMode(false);
   }, []);
 
@@ -128,7 +217,8 @@ export const useGameState = () => {
       return false;
     }
 
-    return mapRef.current[tileY]?.[tileX] === TileType.FLOOR;
+    const tile = mapRef.current[tileY]?.[tileX];
+    return tile === TileType.FLOOR || tile === TileType.STAFF_ROOM;
   }, []);
 
   const hasLineOfSight = useCallback((from: Position, to: Position): boolean => {
@@ -207,6 +297,31 @@ export const useGameState = () => {
     return { position: { x: newX, y: newY }, direction, isMoving: true };
   }, [isWalkable]);
 
+  const handlePurchase = useCallback((itemId: string) => {
+    if (!player) return;
+
+    const item = SHOP_ITEMS.find(i => i.id === itemId);
+    if (!item || player.score < item.cost) return;
+
+    setPlayer(p => {
+      if (!p) return p;
+      const newPlayer = { ...p, score: p.score - item.cost };
+      return newPlayer;
+    });
+
+    setPlayerUpgrades(upgrades => {
+      const newUpgrades = { ...upgrades };
+      if (itemId === 'excitement') {
+        newUpgrades.speedBoosts++;
+      } else if (itemId === 'assignments') {
+        newUpgrades.assignmentsPurchased++;
+      } else if (itemId === 'chatgpt_tracker') {
+        newUpgrades.chatGPTTrackers++;
+      }
+      return newUpgrades;
+    });
+  }, [player]);
+
   useEffect(() => {
     if (!gameStarted || gameOver) return;
 
@@ -216,6 +331,29 @@ export const useGameState = () => {
         e.preventDefault();
         keysPressed.current.add(key);
       }
+      if (key === 'e' && nearNPC && !shopOpen) {
+        e.preventDefault();
+        setShopOpen(true);
+      } else if (key === 'e' && shopOpen) {
+        e.preventDefault();
+        setShopOpen(false);
+      }
+      if (key === 'q' && playerUpgrades.chatGPTTrackers > 0) {
+        e.preventDefault();
+        const currentTime = Date.now();
+        if (currentTime - lastChatGPTUseTime.current >= CHATGPT_TRACKER_COOLDOWN * 1000) {
+          chatGPTTrackerCooldown.current = CHATGPT_TRACKER_COOLDOWN;
+          lastChatGPTUseTime.current = currentTime;
+          chatGPTActiveUntil.current = currentTime + CHATGPT_TRACKER_ACTIVE_DURATION * 1000;
+      
+          // consume one tracker
+          setPlayerUpgrades(upgrades => ({
+            ...upgrades,
+            chatGPTTrackers: Math.max(0, upgrades.chatGPTTrackers - 1),
+          }));
+        }
+      }
+
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -230,20 +368,98 @@ export const useGameState = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [gameStarted, gameOver]);
+  }, [gameStarted, gameOver, nearNPC, shopOpen, playerUpgrades.chatGPTTrackers]);
 
   useEffect(() => {
     if (!gameStarted || gameOver || !player) return;
 
     const gameLoop = setInterval(() => {
+      if (shopOpen) return;
+
       animationFrame.current++;
       const currentTime = animationFrame.current / 60;
       const minutesPassed = Math.floor(currentTime / 60);
       const speedMultiplier = 1 + (minutesPassed * SPEED_INCREASE_PER_MINUTE);
-      const currentMoveSpeed = BASE_MOVE_SPEED * speedMultiplier;
-      const currentStudentSpeed = BASE_STUDENT_SPEED * speedMultiplier;
+      const currentMoveSpeed = (BASE_MOVE_SPEED + playerUpgrades.speedBoosts * 0.5) * speedMultiplier;
+      const currentStudentSpeed = Math.max(1, (BASE_STUDENT_SPEED - playerUpgrades.assignmentsPurchased * 0.5) * speedMultiplier);
+
+      if (chatGPTTrackerCooldown.current > 0) {
+        chatGPTTrackerCooldown.current -= 1 / 60;
+      }
 
       setSurvivalTime(t => t + 1);
+
+      setNpcs(prevNpcs => {
+        if (!player) return prevNpcs;
+        return prevNpcs.map(npc => {
+          const newNpc = { ...npc };
+          const distToPlayer = getDistance(npc.position, player.position);
+          const canSeePlayer = distToPlayer < TILE_SIZE * 3;
+
+          if (distToPlayer < TILE_SIZE * 2) {
+            setNearNPC(true);
+          }
+
+          if (canSeePlayer) {
+            const dx = player.position.x - npc.position.x;
+            const dy = player.position.y - npc.position.y;
+            if (Math.abs(dx) > Math.abs(dy)) {
+              newNpc.direction = dx > 0 ? Direction.RIGHT : Direction.LEFT;
+            } else {
+              newNpc.direction = dy > 0 ? Direction.DOWN : Direction.UP;
+            }
+            newNpc.isMoving = false;
+            newNpc.animationFrame = 0;
+            newNpc.targetPosition = null;
+
+            if (animationFrame.current % 180 === 0) {
+              newNpc.currentSaying = NPC_SAYINGS[Math.floor(Math.random() * NPC_SAYINGS.length)];
+              newNpc.sayingTime = 180;
+            }
+          } else {
+            if (animationFrame.current % 120 === 0 || !newNpc.targetPosition) {
+              const bounds = newNpc.roomBounds;
+              if (bounds) {
+                const targetX = bounds.minX + Math.random() * (bounds.maxX - bounds.minX);
+                const targetY = bounds.minY + Math.random() * (bounds.maxY - bounds.minY);
+                newNpc.targetPosition = { x: targetX, y: targetY };
+              }
+            }
+
+            if (newNpc.targetPosition) {
+              const result = moveTowards(npc.position, newNpc.targetPosition, 2);
+              newNpc.position = result.position;
+              newNpc.direction = result.direction;
+              newNpc.isMoving = result.isMoving;
+
+              if (animationFrame.current % ANIMATION_SPEED === 0 && newNpc.isMoving) {
+                newNpc.animationFrame = (npc.animationFrame + 1) % 3;
+              }
+
+              const distToTarget = getDistance(npc.position, newNpc.targetPosition);
+              if (distToTarget < 10) {
+                newNpc.targetPosition = null;
+                newNpc.isMoving = false;
+                newNpc.animationFrame = 0;
+              }
+            }
+          }
+
+          if (newNpc.sayingTime > 0) {
+            newNpc.sayingTime--;
+          }
+
+          return newNpc;
+        });
+      });
+
+      let isNear = false;
+      npcs.forEach(npc => {
+        if (player && getDistance(npc.position, player.position) < TILE_SIZE * 2) {
+          isNear = true;
+        }
+      });
+      setNearNPC(isNear);
 
       setPlayer(prevPlayer => {
         if (!prevPlayer) return prevPlayer;
@@ -321,8 +537,55 @@ export const useGameState = () => {
       setStudents(prevStudents => {
         if (!player) return prevStudents;
 
-        const updatedStudents = prevStudents.map(student => {
+        let studentsToUpdate = [...prevStudents];
+
+        // --- ChatGPT Tracker fear effect ---
+        const now = Date.now();
+        const trackerActive = now < chatGPTActiveUntil.current;
+        
+        if (trackerActive) {
+          studentsToUpdate = studentsToUpdate.map(student => {
+            const distToPlayer = getDistance(student.position, player.position);
+            if (distToPlayer < CHATGPT_TRACKER_RADIUS) {
+              // Students move away from the player each frame during activation
+              const dx = student.position.x - player.position.x;
+              const dy = student.position.y - player.position.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+        
+              if (distance > 0) {
+                const fearSpeed = currentStudentSpeed * CHATGPT_FEAR_SPEED_MULTIPLIER;
+                const pushX = (dx / distance) * fearSpeed;
+                const pushY = (dy / distance) * fearSpeed;
+                const newX = student.position.x + pushX;
+                const newY = student.position.y + pushY;
+        
+                // Avoid walls, stay walkable
+                if (isWalkable(newX, newY)) {
+                  return {
+                    ...student,
+                    position: { x: newX, y: newY },
+                    state: StudentState.FLEEING, // optional new state
+                    chasing: false,
+                    target: null,
+                  };
+                }
+              }
+            }
+            return student;
+          });
+        }
+
+
+        const updatedStudents = studentsToUpdate.map(student => {
           const newStudent = { ...student };
+
+          if (trackerActive && getDistance(student.position, player.position) < CHATGPT_TRACKER_RADIUS * 1.5) {
+            // temporarily override behavior
+            newStudent.state = StudentState.FLEEING;
+            newStudent.chasing = false;
+            newStudent.target = null;
+            return newStudent;
+          }
 
           newStudent.communicationCooldown = Math.max(0, newStudent.communicationCooldown - 1);
 
@@ -513,19 +776,29 @@ export const useGameState = () => {
     }, 1000 / 60);
 
     return () => clearInterval(gameLoop);
-  }, [gameStarted, gameOver, player, isWalkable, hasLineOfSight, moveTowards]);
+  }, [gameStarted, gameOver, player, isWalkable, hasLineOfSight, moveTowards, shopOpen, playerUpgrades, npcs]);
 
   return {
     gameMap,
     player,
     students,
     coins,
+    npcs,
     gameStarted,
     gameOver,
     gameOverReason,
     survivalTime,
     startGame,
     restartGame,
+    shopOpen,
+    nearNPC,
+    shopItems: SHOP_ITEMS.map(item => ({
+      ...item,
+      purchased: item.id === 'chatgpt_tracker' ? playerUpgrades.chatGPTTrackers : undefined,
+    })),
+    handlePurchase,
+    playerUpgrades,
+    chatGPTTrackerCooldown: Math.max(0, chatGPTTrackerCooldown.current),
     TILE_SIZE,
     MAP_SIZE,
   };

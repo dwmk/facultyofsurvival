@@ -54,4 +54,30 @@ export enum Direction {
 export enum TileType {
   FLOOR = 0,
   WALL = 1,
+  STAFF_ROOM = 2,
+}
+
+export interface NPC extends Character {
+  sayings: string[];
+  currentSaying: string;
+  sayingTime: number;
+  targetPosition: Position | null;
+  idleMoving: boolean;
+  roomBounds: { minX: number; maxX: number; minY: number; maxY: number } | null;
+}
+
+export interface ShopItem {
+  id: string;
+  name: string;
+  description: string;
+  cost: number;
+  icon: string;
+  type: 'upgrade' | 'tool';
+  purchased?: number;
+}
+
+export interface PlayerUpgrades {
+  speedBoosts: number;
+  assignmentsPurchased: number;
+  chatGPTTrackers: number;
 }

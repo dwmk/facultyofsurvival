@@ -9,6 +9,9 @@ private melodyIndex = 0;
 private bassIndex = 0;
 private drumIndex = 0;
 private bgmIntervalId: number | null = null;
+private bossMelodyIndex = 0;
+private bossBassIndex = 0;
+private bossDrumIndex = 0;
 private scale = [130.81, 146.83, 164.81, 174.61, 196.00, 220.00, 246.94, 261.63];
 private melodyPatterns = [
 [2, 2, 2, 0, 2, 4, 4, 5],
@@ -95,25 +98,44 @@ this.oscillators = [];
 }
 
 setBossMode(enabled: boolean): void {
-  this.bossMode = enabled;
+  if (this.bossMode !== enabled) {
+    this.bossMode = enabled;
+    if (enabled) {
+      this.bossMelodyIndex = 0;
+      this.bossBassIndex = 0;
+      this.bossDrumIndex = 0;
+    }
+  }
 }
   
 private playBackgroundBeat(): void {
 if (!this.isPlaying || !this.audioContext || !this.masterGain) return;
+
+if (this.bossMode) {
+const step = this.bossDrumIndex % 8;
+if (this.drumPatterns.kick[step]) this.playBossKick();
+if (this.drumPatterns.snare[step]) this.playBossSnare();
+if (this.drumPatterns.hat[step]) this.playBossHat();
+if (step % 2 === 0) {
+this.playBossMelodyNote();
+}
+if (step % 4 === 0) {
+this.playBossBassNote();
+}
+this.bossDrumIndex++;
+} else {
 const step = this.drumIndex % 8;
-// Play drums
 if (this.drumPatterns.kick[step]) this.playKick();
 if (this.drumPatterns.snare[step]) this.playSnare();
 if (this.drumPatterns.hat[step]) this.playHat();
-// Play melody every 2 steps (300ms)
 if (step % 2 === 0) {
 this.playMelodyNote();
 }
-// Play bass every 4 steps (600ms)
 if (step % 4 === 0) {
 this.playBassNote();
 }
 this.drumIndex++;
+}
 }
 private playMelodyNote(): void {
 const noteIndex = this.currentMelody[this.melodyIndex % this.currentMelody.length];
@@ -246,6 +268,107 @@ osc.connect(gain);
 gain.connect(this.masterGain);
 osc.start();
 osc.stop(this.audioContext.currentTime + 0.2);
+}
+
+private playBossMelodyNote(): void {
+const bossScale = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25];
+const bossMelody = [0, 2, 4, 5, 7, 5, 4, 2];
+const noteIndex = bossMelody[this.bossMelodyIndex % bossMelody.length];
+const frequency = bossScale[noteIndex] * 2;
+const osc = this.audioContext.createOscillator();
+const gain = this.audioContext.createGain();
+const filter = this.audioContext.createBiquadFilter();
+osc.type = 'sawtooth';
+osc.frequency.value = frequency;
+filter.type = 'lowpass';
+filter.frequency.value = 4000;
+filter.frequency.exponentialRampToValueAtTime(1000, this.audioContext.currentTime + 0.3);
+gain.gain.value = 0.35;
+gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+osc.connect(filter);
+filter.connect(gain);
+gain.connect(this.masterGain);
+osc.start();
+osc.stop(this.audioContext.currentTime + 0.3);
+this.oscillators.push(osc);
+this.bossMelodyIndex++;
+}
+
+private playBossBassNote(): void {
+const bossScale = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25];
+const bossBass = [0, 0, 3, 3, 0, 0, 5, 5];
+const noteIndex = bossBass[this.bossBassIndex % bossBass.length];
+const frequency = bossScale[noteIndex] / 2;
+const osc = this.audioContext.createOscillator();
+const gain = this.audioContext.createGain();
+const filter = this.audioContext.createBiquadFilter();
+osc.type = 'sine';
+osc.frequency.value = frequency;
+filter.type = 'lowpass';
+filter.frequency.value = 800;
+gain.gain.value = 0.4;
+gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.6);
+osc.connect(filter);
+filter.connect(gain);
+gain.connect(this.masterGain);
+osc.start();
+osc.stop(this.audioContext.currentTime + 0.6);
+this.oscillators.push(osc);
+this.bossBassIndex++;
+}
+
+private playBossKick(): void {
+const osc = this.audioContext.createOscillator();
+const gain = this.audioContext.createGain();
+osc.type = 'sine';
+osc.frequency.setValueAtTime(180, this.audioContext.currentTime);
+osc.frequency.exponentialRampToValueAtTime(40, this.audioContext.currentTime + 0.5);
+gain.gain.setValueAtTime(1.0, this.audioContext.currentTime);
+gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
+osc.connect(gain);
+gain.connect(this.masterGain);
+osc.start();
+osc.stop(this.audioContext.currentTime + 0.5);
+}
+
+private playBossSnare(): void {
+const bufferSize = this.audioContext.sampleRate * 0.15;
+const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+const data = buffer.getChannelData(0);
+for (let i = 0; i < bufferSize; i++) {
+data[i] = Math.random() * 2 - 1;
+}
+const noise = this.audioContext.createBufferSource();
+noise.buffer = buffer;
+const gain = this.audioContext.createGain();
+gain.gain.setValueAtTime(0.6, this.audioContext.currentTime);
+gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.15);
+noise.connect(gain);
+gain.connect(this.masterGain);
+noise.start();
+noise.stop(this.audioContext.currentTime + 0.15);
+}
+
+private playBossHat(): void {
+const bufferSize = this.audioContext.sampleRate * 0.08;
+const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+const data = buffer.getChannelData(0);
+for (let i = 0; i < bufferSize; i++) {
+data[i] = Math.random() * 2 - 1;
+}
+const noise = this.audioContext.createBufferSource();
+noise.buffer = buffer;
+const highpass = this.audioContext.createBiquadFilter();
+highpass.type = "highpass";
+highpass.frequency.value = 7000;
+const gain = this.audioContext.createGain();
+gain.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.08);
+noise.connect(highpass);
+highpass.connect(gain);
+gain.connect(this.masterGain);
+noise.start();
+noise.stop(this.audioContext.currentTime + 0.08);
 }
 
 }

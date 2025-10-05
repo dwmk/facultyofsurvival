@@ -3,6 +3,7 @@ import { GameCanvas } from './components/GameCanvas';
 import { HUD } from './components/HUD';
 import { StartScreen } from './components/StartScreen';
 import { GameOverScreen } from './components/GameOverScreen';
+import { Shop } from './components/Shop';
 import { useGameState } from './hooks/useGameState';
 import { AudioEngine } from './utils/audioEngine';
 
@@ -12,12 +13,19 @@ function App() {
     player,
     students,
     coins,
+    npcs,
     gameStarted,
     gameOver,
     gameOverReason,
     survivalTime,
     startGame,
     restartGame,
+    shopOpen,
+    nearNPC,
+    shopItems,
+    handlePurchase,
+    playerUpgrades,
+    chatGPTTrackerCooldown,
     TILE_SIZE,
     MAP_SIZE,
   } = useGameState();
@@ -86,8 +94,25 @@ function App() {
         player={player}
         students={students}
         coins={coins}
+        npcs={npcs}
         tileSize={TILE_SIZE}
         mapSize={MAP_SIZE}
+        playerUpgrades={playerUpgrades}
+        chatGPTTrackerCooldown={chatGPTTrackerCooldown}
+      />
+
+      {nearNPC && !shopOpen && (
+        <div className="text-white text-lg font-bold animate-pulse">
+          Press E to open shop
+        </div>
+      )}
+
+      <Shop
+        isOpen={shopOpen}
+        playerEgo={player?.score || 0}
+        shopItems={shopItems}
+        onPurchase={handlePurchase}
+        onClose={() => {}}
       />
 
       {gameOver && player && (
