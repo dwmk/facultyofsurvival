@@ -13,7 +13,7 @@ interface CharacterSelectProps {
 export const CharacterSelect = ({ onSelect, isUnlocked, stats }: CharacterSelectProps) => {
   const getProgressLabel = (attribute: string, current: number, amount: number) => {
     if (attribute === 'totalPlaytime') {
-      return `${Math.floor(current / 3600)} / ${Math.floor(amount / 3600)} Hrs`;
+      return `${Math.floor(current / 60)} / ${Math.floor(amount / 60)} Mins total played`;
     } else if (attribute === 'totalSurvival') {
       return `${Math.floor(current / 60)} / ${Math.floor(amount / 60)} Mins survived`;
     } else {

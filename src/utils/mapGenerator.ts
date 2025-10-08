@@ -37,9 +37,35 @@ export class MapGenerator {
       for (let ry = y; ry < y + roomHeight; ry++) {
         for (let rx = x; rx < x + roomWidth; rx++) {
           if (ry >= 0 && ry < this.height && rx >= 0 && rx < this.width) {
-            this.map[ry][rx] = TileType.STAFF_ROOM;
+            const isWall = (rx === x || rx === x + roomWidth - 1 || ry === y || ry === y + roomHeight - 1);
+            this.map[ry][rx] = isWall ? TileType.WALL : TileType.STAFF_ROOM;
           }
         }
+      }
+
+      const doorSide = Math.floor(Math.random() * 4);
+      let doorX: number, doorY: number;
+
+      switch (doorSide) {
+        case 0:
+          doorX = x + Math.floor(roomWidth / 2);
+          doorY = y;
+          break;
+        case 1:
+          doorX = x + roomWidth - 1;
+          doorY = y + Math.floor(roomHeight / 2);
+          break;
+        case 2:
+          doorX = x + Math.floor(roomWidth / 2);
+          doorY = y + roomHeight - 1;
+          break;
+        default:
+          doorX = x;
+          doorY = y + Math.floor(roomHeight / 2);
+      }
+
+      if (doorX >= 0 && doorX < this.width && doorY >= 0 && doorY < this.height) {
+        this.map[doorY][doorX] = TileType.STAFF_ROOM;
       }
 
       this.staffRooms.push({

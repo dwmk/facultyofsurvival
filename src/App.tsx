@@ -34,6 +34,9 @@ function App() {
     handlePurchase,
     playerUpgrades,
     chatGPTTrackerCooldown,
+    chatGPTStartTime,
+    chatGPTActiveUntil,
+    lastDamageTimeForVignette,
     TILE_SIZE,
     MAP_SIZE,
   } = useGameState();
@@ -119,6 +122,9 @@ function App() {
         customPlayerSpritesheets={customPlayerSpritesheets}
         playerUpgrades={playerUpgrades}
         chatGPTTrackerCooldown={chatGPTTrackerCooldown}
+        chatGPTStartTime={chatGPTStartTime}
+        chatGPTActiveUntil={chatGPTActiveUntil}
+        lastDamageTimeForVignette={lastDamageTimeForVignette}
         nearNPC={nearNPC}
       />
 

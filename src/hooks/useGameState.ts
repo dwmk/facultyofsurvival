@@ -18,7 +18,9 @@ const COIN_VALUE = 10;
 const COIN_HEALTH_BOOST = 5;
 const STUDENT_VIEW_DISTANCE = 10;
 const COMMUNICATION_RANGE = 10;
-const SPEED_INCREASE_PER_MINUTE = 0.1;
+const SPEED_INCREASE_PER_MINUTE = 1;
+const STUDENT_SPEED_EXP_FACTOR = 0.5;
+const PLAYER_SPEED_EXP_FACTOR = 0.4;
 const AURA_FARMING_DELAY = 5;
 const AURA_FARMING_GAIN = 10;
 const EGO_DECAY_RATE = 1;
@@ -26,8 +28,9 @@ const STUDENT_SEPARATION_DISTANCE = TILE_SIZE * 2;
 const CHATGPT_TRACKER_COOLDOWN = 5;
 const CHATGPT_TRACKER_RADIUS = TILE_SIZE * 8;
 const CHATGPT_TRACKER_FORCE = 15;
-const CHATGPT_TRACKER_ACTIVE_DURATION = 3; // seconds the fear wave lasts
-const CHATGPT_FEAR_SPEED_MULTIPLIER = 2.8; // how fast students run away
+const CHATGPT_TRACKER_ACTIVE_DURATION = 3;
+const CHATGPT_TRACKER_EXPANSION_TIME = 1;
+const CHATGPT_FEAR_SPEED_MULTIPLIER = 2.8;
 const MARQUEE_COOLDOWN = 35000;
 
 const NPC_SAYINGS = [
@@ -74,7 +77,7 @@ export const CHARACTERS = {
   tsukasa: { name: 'Club Pres.', pronoun: 'Bro', spritesheet: 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_tsukasa.png' as const, unlock_attribute: 'totalEgo' as const, unlock_amount: 1000 },
   angrynerd: { name: 'Class Rep.', pronoun: 'CR', spritesheet: 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_angrynerd.png' as const, unlock_attribute: 'totalSurvival' as const, unlock_amount: 1000 },
   greed: { name: 'Professor', pronoun: 'Sir', spritesheet: 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_greed.png' as const, unlock_attribute: 'totalEgo' as const, unlock_amount: 5000 },
-  darion: { name: 'Headmaster', pronoun: 'Sir', spritesheet: 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_darion.png' as const, unlock_attribute: 'totalPlaytime' as const, unlock_amount: 100 * 3600 },
+  darion: { name: 'Headmaster', pronoun: 'Sir', spritesheet: 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_darion.png' as const, unlock_attribute: 'totalPlaytime' as const, unlock_amount: 1 * 3600 },
 } as const;
 
 type UnlockAttribute = 'none' | 'totalEgo' | 'totalPlaytime' | 'totalSurvival' | 'totalGameovers';
@@ -122,8 +125,10 @@ export const useGameState = () => {
   const chatGPTTrackerCooldown = useRef<number>(0);
   const lastChatGPTUseTime = useRef<number>(0);
   const chatGPTActiveUntil = useRef<number>(0);
+  const chatGPTStartTime = useRef<number>(0);
   const accumulatedPlaytimeRef = useRef(0);
   const lastCommRef = useRef(0);
+  const lastDamageTimeForVignette = useRef<number>(0);
 
   // Load stats
   useEffect(() => {
@@ -425,8 +430,8 @@ export const useGameState = () => {
           chatGPTTrackerCooldown.current = CHATGPT_TRACKER_COOLDOWN;
           lastChatGPTUseTime.current = currentTime;
           chatGPTActiveUntil.current = currentTime + CHATGPT_TRACKER_ACTIVE_DURATION * 1000;
-      
-          // consume one tracker
+          chatGPTStartTime.current = currentTime;
+
           setPlayerUpgrades(upgrades => ({
             ...upgrades,
             chatGPTTrackers: Math.max(0, upgrades.chatGPTTrackers - 1),
@@ -459,9 +464,10 @@ export const useGameState = () => {
       animationFrame.current++;
       const currentTime = animationFrame.current / 60;
       const minutesPassed = Math.floor(currentTime / 60);
-      const speedMultiplier = 1 + (minutesPassed * SPEED_INCREASE_PER_MINUTE);
-      const currentMoveSpeed = (BASE_MOVE_SPEED + playerUpgrades.speedBoosts * 0.5) * speedMultiplier;
-      const currentStudentSpeed = Math.max(1, (BASE_STUDENT_SPEED - playerUpgrades.assignmentsPurchased * 0.5) * speedMultiplier);
+      const playerSpeedIncrease = SPEED_INCREASE_PER_MINUTE * minutesPassed + Math.pow(PLAYER_SPEED_EXP_FACTOR, minutesPassed);
+      const studentSpeedIncrease = SPEED_INCREASE_PER_MINUTE * minutesPassed + Math.pow(STUDENT_SPEED_EXP_FACTOR, minutesPassed);
+      const currentMoveSpeed = (BASE_MOVE_SPEED + playerUpgrades.speedBoosts * 0.5 + playerSpeedIncrease) * (player.health <= 0 ? 0.5 : 1);
+      const currentStudentSpeed = Math.max(1, BASE_STUDENT_SPEED - playerUpgrades.assignmentsPurchased * 0.5 + studentSpeedIncrease);
 
       if (chatGPTTrackerCooldown.current > 0) {
         chatGPTTrackerCooldown.current -= 1 / 60;
@@ -596,18 +602,25 @@ export const useGameState = () => {
           }
         }
 
-        if (newPlayer.health < newPlayer.maxHealth) {
+        if (newPlayer.health < newPlayer.maxHealth && newPlayer.health > 0 && newPlayer.score > 0) {
           newPlayer.health = Math.min(newPlayer.maxHealth, newPlayer.health + HEALTH_REGEN_RATE / 60);
         }
 
+        if (newPlayer.health <= 0 && newPlayer.score > 0) {
+          newPlayer.score -= EGO_DECAY_RATE;
+        }
+        
+
         const egoTimePassed = (currentTime - lastEgoDecayTime.current) / 1000;
         if (egoTimePassed >= 1) {
-          newPlayer.score = Math.max(0, newPlayer.score - EGO_DECAY_RATE);
+          if (newPlayer.health > 0) {
+            newPlayer.score = Math.max(0, newPlayer.score - EGO_DECAY_RATE);
+          }
           lastEgoDecayTime.current = currentTime;
 
-          if (newPlayer.score <= 0) {
+          if (newPlayer.score <= 0 && newPlayer.health <= 0) {
             setGameOver(true);
-            setGameOverReason('You lost your self-esteem!');
+            setGameOverReason('You lost both your mental health and self-esteem!');
             audioEngineRef.current.setBossMode(false);
           }
         }
@@ -806,12 +819,8 @@ export const useGameState = () => {
             setPlayer(p => {
               if (!p) return p;
               const newHealth = p.health - STUDENT_DAMAGE;
-              if (newHealth <= 0) {
-                setGameOver(true);
-                setGameOverReason('You were overwhelmed by student requests!');
-                audioEngineRef.current.setBossMode(false);
-              }
               lastDamageTime.current = Date.now();
+              lastDamageTimeForVignette.current = Date.now();
               audioEngineRef.current.playHitSound();
               return { ...p, health: Math.max(0, newHealth) };
             });
@@ -928,6 +937,9 @@ export const useGameState = () => {
     handlePurchase,
     playerUpgrades,
     chatGPTTrackerCooldown: Math.max(0, chatGPTTrackerCooldown.current),
+    chatGPTStartTime: chatGPTStartTime.current,
+    chatGPTActiveUntil: chatGPTActiveUntil.current,
+    lastDamageTimeForVignette: lastDamageTimeForVignette.current,
     TILE_SIZE,
     MAP_SIZE,
     selectedCharacter,

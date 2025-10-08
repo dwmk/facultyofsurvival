@@ -13,6 +13,9 @@ interface GameCanvasProps {
   mapSize: number;
   playerUpgrades: PlayerUpgrades;
   chatGPTTrackerCooldown: number;
+  chatGPTStartTime: number;
+  chatGPTActiveUntil: number;
+  lastDamageTimeForVignette: number;
   activeMarquee: { text: string; startTime: number } | null;
   customPlayerSpritesheets: Record<string, string>;
   nearNPC: boolean;
@@ -24,7 +27,7 @@ const SPRITE_URL = 'https://dewanmukto.github.io/asset/images/geminidrake_devian
 const ALBEDO_SPRITE_URL = 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_albedo.png';
 const SUPPORTS_SPRITE_URL = 'https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_supports.png';
 
-export const GameCanvas = ({ gameMap, player, students, coins, npcs, tileSize, mapSize, playerUpgrades, chatGPTTrackerCooldown, activeMarquee, customPlayerSpritesheets, nearNPC }: GameCanvasProps) => {
+export const GameCanvas = ({ gameMap, player, students, coins, npcs, tileSize, mapSize, playerUpgrades, chatGPTTrackerCooldown, chatGPTStartTime, chatGPTActiveUntil, lastDamageTimeForVignette, activeMarquee, customPlayerSpritesheets, nearNPC }: GameCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const spriteLoaderRef = useRef<SpriteLoader>(new SpriteLoader());
   const albedoLoaderRef = useRef<NPCSpriteLoader>(new NPCSpriteLoader('albedo'));
@@ -408,12 +411,40 @@ const drawChatBubble = (
         ctx.restore();
       }
 
-      if (chatGPTTrackerCooldown > 0 && chatGPTTrackerCooldown < 5) {
-        const progress = (5 - chatGPTTrackerCooldown) / 5;
-        const radius = progress * 300;
+      const now = Date.now();
+      if (now >= chatGPTStartTime && now <= chatGPTActiveUntil) {
+        const elapsedSinceStart = (now - chatGPTStartTime) / 1000;
+        const totalDuration = (chatGPTActiveUntil - chatGPTStartTime) / 1000;
+        const maxRadius = 256;
+        const playerCenterX = player.position.x - cameraX;
+        const playerCenterY = player.position.y - cameraY;
+
+        const expansionProgress = Math.min(1, elapsedSinceStart / 1);
+        const fadeProgress = 1 - (elapsedSinceStart / totalDuration);
+        const radius = expansionProgress * maxRadius;
+
+        ctx.save();
+        const gradient = ctx.createRadialGradient(
+          playerCenterX, playerCenterY, 0,
+          playerCenterX, playerCenterY, radius
+        );
+        gradient.addColorStop(0, `rgba(0, 255, 100, ${0.5 * fadeProgress})`);
+        gradient.addColorStop(0.7, `rgba(0, 200, 50, ${0.4 * fadeProgress})`);
+        gradient.addColorStop(1, `rgba(0, 150, 0, ${0.2 * fadeProgress})`);
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(playerCenterX, playerCenterY, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = `rgba(0, 255, 0, ${0.8 * fadeProgress})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(playerCenterX, playerCenterY, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
         const playerScreenX = player.position.x - cameraX - 40;
         const playerScreenY = player.position.y - cameraY - 40;
-        
         drawChatBubble(ctx, 'Stop using ChatGPT!', playerScreenX, playerScreenY);
       }
     }
@@ -471,26 +502,65 @@ const drawChatBubble = (
       }
     }
 
-    // Press E text overlay
+    const timeSinceLastDamage = (Date.now() - lastDamageTimeForVignette) / 1000;
+const vignetteActive = timeSinceLastDamage < 1.5 || (player && (player.health <= 0 || player.score <= 0));
+
+if (vignetteActive) {
+  ctx.save();
+  const centerX = VIEWPORT_WIDTH / 2;
+  const centerY = VIEWPORT_HEIGHT / 2;
+  const outerRadius = VIEWPORT_WIDTH * 0.7;
+  let innerRadius;
+  let vignetteOpacity;
+
+  let inDespair = player && (player.health <= 0);
+  if (inDespair) {
+    // Progressive despair mode: grows inward and intensifies based on remaining health/ego
+    let progress = 0;
+    if (player.health <= 0 && player.score <= 0){
+      progress = 1;
+    } else if (player.health <= 0) {
+      progress = 1 - (player.score / 30); // Initial ego is 30
+    } else if (player.score <= 0) {
+      progress = 1 - (player.health / player.maxHealth);
+    }
+    innerRadius = outerRadius * (1 - progress); // Shrinks transparent center from full to 0
+    vignetteOpacity = 0.3 + 0.7 * progress; // Starts subtle (0.3), fills to nearly full red (1.0)
+  } else {
+    // Quick flash on damage: fixed size, fading opacity
+    vignetteOpacity = Math.max(0, 0.6 * (1 - timeSinceLastDamage / 1.5));
+    innerRadius = VIEWPORT_WIDTH * 0.3;
+  }
+
+  const vignetteGradient = ctx.createRadialGradient(
+    centerX, centerY, innerRadius,
+    centerX, centerY, outerRadius
+  );
+  vignetteGradient.addColorStop(0, 'rgba(139, 0, 0, 0)');
+  vignetteGradient.addColorStop(1, `rgba(139, 0, 0, ${vignetteOpacity})`);
+  ctx.fillStyle = vignetteGradient;
+  ctx.fillRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+  ctx.restore();
+}
+
     if (nearNPC) {
-      ctx.fillStyle = 'rgba(0, 5, 255, 0.9)';  // text font color
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';     // text font outline
+      ctx.fillStyle = 'rgba(0, 5, 255, 0.9)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
       ctx.lineWidth = 2;
-      ctx.font = 'bold 16px "Press Start 2P", monospace';  // Match game font
+      ctx.font = 'bold 16px "Press Start 2P", monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-    
+
       const text = 'Press E to open shop';
       const metrics = ctx.measureText(text);
       const textX = VIEWPORT_WIDTH / 2;
-      const textY = 20;  // Near top edge, with padding
-    
-      // Outline (simple stroke for pixel-art feel)
+      const textY = 20;
+
       ctx.strokeText(text, textX, textY);
       ctx.fillText(text, textX, textY);
     }
     
-  }, [gameMap, player, students, coins, npcs, tileSize, mapSize, chatGPTTrackerCooldown, playerUpgrades, activeMarquee, customPlayerSpritesheets, nearNPC]);
+  }, [gameMap, player, students, coins, npcs, tileSize, mapSize, chatGPTTrackerCooldown, chatGPTStartTime, chatGPTActiveUntil, lastDamageTimeForVignette, playerUpgrades, activeMarquee, customPlayerSpritesheets, nearNPC]);
 
 
   return <canvas ref={canvasRef} width={VIEWPORT_WIDTH} height={VIEWPORT_HEIGHT} className="border-4 border-gray-800 rounded" />;

@@ -29,6 +29,7 @@ export enum StudentState {
   CHASING = 'chasing',
   INFORMED = 'informed',
   SEARCHING = 'searching',
+  FLEEING = 'fleeing',
 }
 
 export interface Student extends Character {
