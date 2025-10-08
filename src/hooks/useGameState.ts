@@ -129,6 +129,7 @@ export const useGameState = () => {
   const accumulatedPlaytimeRef = useRef(0);
   const lastCommRef = useRef(0);
   const lastDamageTimeForVignette = useRef<number>(0);
+  const peakEgoRef = useRef<number>(30);
 
   // Load stats
   useEffect(() => {
@@ -287,6 +288,7 @@ export const useGameState = () => {
     chatGPTTrackerCooldown.current = 0;
     lastChatGPTUseTime.current = 0;
     audioEngineRef.current.setBossMode(false);
+    peakEgoRef.current = 30;
   }, [CHARACTERS]);
 
   const restartGame = useCallback(() => {
@@ -406,6 +408,36 @@ export const useGameState = () => {
       return newUpgrades;
     });
   }, [player]);
+
+  const simulateKeyDown = useCallback((key: string) => {
+    const lowerKey = key.toLowerCase();
+    keysPressed.current.add(lowerKey);
+
+    if (lowerKey === 'e' && nearNPC && !shopOpen) {
+      setShopOpen(true);
+    } else if (lowerKey === 'e' && shopOpen) {
+      setShopOpen(false);
+    }
+
+    if (lowerKey === 'q' && playerUpgrades.chatGPTTrackers > 0) {
+      const currentTime = Date.now();
+      if (currentTime - lastChatGPTUseTime.current >= CHATGPT_TRACKER_COOLDOWN * 1000) {
+        chatGPTTrackerCooldown.current = CHATGPT_TRACKER_COOLDOWN;
+        lastChatGPTUseTime.current = currentTime;
+        chatGPTActiveUntil.current = currentTime + CHATGPT_TRACKER_ACTIVE_DURATION * 1000;
+        chatGPTStartTime.current = currentTime;
+
+        setPlayerUpgrades(upgrades => ({
+          ...upgrades,
+          chatGPTTrackers: Math.max(0, upgrades.chatGPTTrackers - 1),
+        }));
+      }
+    }
+  }, [nearNPC, shopOpen, playerUpgrades.chatGPTTrackers]);
+
+  const simulateKeyUp = useCallback((key: string) => {
+    keysPressed.current.delete(key.toLowerCase());
+  }, []);
 
   useEffect(() => {
     if (!gameStarted || gameOver) return;
@@ -608,6 +640,10 @@ export const useGameState = () => {
 
         if (newPlayer.health <= 0 && newPlayer.score > 0) {
           newPlayer.score -= EGO_DECAY_RATE;
+        }
+
+        if (newPlayer.score > peakEgoRef.current) {
+          peakEgoRef.current = newPlayer.score;
         }
         
 
@@ -888,7 +924,7 @@ export const useGameState = () => {
         ...prev,
         totalGameovers: prev.totalGameovers + 1,
         totalSurvival: prev.totalSurvival + (survivalTime / 60),
-        totalEgo: prev.totalEgo + player.score,
+        totalEgo: prev.totalEgo + peakEgoRef.current,
         totalPlaytime: prev.totalPlaytime + accumulatedPlaytimeRef.current,
       }));
     }
@@ -950,5 +986,7 @@ export const useGameState = () => {
     stats,
     activeMarquee,
     customPlayerSpritesheets,
+    simulateKeyDown,
+    simulateKeyUp,
   };
 };
