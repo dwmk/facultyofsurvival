@@ -5,6 +5,8 @@ import { HUD } from './components/HUD';
 import { StartScreen } from './components/StartScreen';
 import { GameOverScreen } from './components/GameOverScreen';
 import { Shop } from './components/Shop';
+import { MobileControls } from './components/MobileControls';
+import { MobileOrientationWarning } from './components/MobileOrientationWarning';
 import { useGameState } from './hooks/useGameState';
 import { AudioEngine } from './utils/audioEngine';
 
@@ -39,6 +41,8 @@ function App() {
     lastDamageTimeForVignette,
     TILE_SIZE,
     MAP_SIZE,
+    simulateKeyDown,
+    simulateKeyUp,
   } = useGameState();
 
   const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
@@ -103,56 +107,67 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex flex-col items-center justify-center p-8 gap-6">
-      <h1 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-green-400">
-        Faculty of Survival
-      </h1>
+    <>
+      <MobileOrientationWarning />
 
-      {player && <HUD player={player} survivalTime={survivalTime} />}
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex flex-col items-center justify-center p-8 gap-6">
+        <h1 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-green-400">
+          Faculty of Survival
+        </h1>
 
-      <GameCanvas
-        gameMap={gameMap}
-        player={player}
-        students={students}
-        coins={coins}
-        npcs={npcs}
-        tileSize={TILE_SIZE}
-        mapSize={MAP_SIZE}
-        activeMarquee={activeMarquee}
-        customPlayerSpritesheets={customPlayerSpritesheets}
-        playerUpgrades={playerUpgrades}
-        chatGPTTrackerCooldown={chatGPTTrackerCooldown}
-        chatGPTStartTime={chatGPTStartTime}
-        chatGPTActiveUntil={chatGPTActiveUntil}
-        lastDamageTimeForVignette={lastDamageTimeForVignette}
-        nearNPC={nearNPC}
-      />
+        {player && <HUD player={player} survivalTime={survivalTime} />}
 
-      {showCharSelect && (
-      <CharacterSelect
-        onSelect={onCharSelect}
-        isUnlocked={isUnlocked}
-        stats={stats}
-      />
-    )}
+        <GameCanvas
+          gameMap={gameMap}
+          player={player}
+          students={students}
+          coins={coins}
+          npcs={npcs}
+          tileSize={TILE_SIZE}
+          mapSize={MAP_SIZE}
+          activeMarquee={activeMarquee}
+          customPlayerSpritesheets={customPlayerSpritesheets}
+          playerUpgrades={playerUpgrades}
+          chatGPTTrackerCooldown={chatGPTTrackerCooldown}
+          chatGPTStartTime={chatGPTStartTime}
+          chatGPTActiveUntil={chatGPTActiveUntil}
+          lastDamageTimeForVignette={lastDamageTimeForVignette}
+          nearNPC={nearNPC}
+        />
 
-      <Shop
-        isOpen={shopOpen}
-        playerEgo={player?.score || 0}
-        shopItems={shopItems}
-        onPurchase={handlePurchase}
-        onClose={closeShop}
-      />
-
-      {gameOver && player && (
-        <GameOverScreen
-          score={player.score}
-          survivalTime={survivalTime}
-          onRestart={handleRestart}
-          reason={gameOverReason}
+        {showCharSelect && (
+        <CharacterSelect
+          onSelect={onCharSelect}
+          isUnlocked={isUnlocked}
+          stats={stats}
         />
       )}
-    </div>
+
+        <Shop
+          isOpen={shopOpen}
+          playerEgo={player?.score || 0}
+          shopItems={shopItems}
+          onPurchase={handlePurchase}
+          onClose={closeShop}
+        />
+
+        {gameOver && player && (
+          <GameOverScreen
+            score={player.score}
+            survivalTime={survivalTime}
+            onRestart={handleRestart}
+            reason={gameOverReason}
+          />
+        )}
+
+        {gameStarted && !gameOver && (
+          <MobileControls
+            onKeyDown={simulateKeyDown}
+            onKeyUp={simulateKeyUp}
+          />
+        )}
+      </div>
+    </>
   );
 }
 
