@@ -99,7 +99,7 @@ const CharacterPreview = ({ charId, char }: CharacterPreviewProps) => {
     // Create and load loader ONCE
     if (char.spritesheet === 'default') {
       loaderRef.current = new SpriteLoader();
-      loaderRef.current.load('https://dewanmukto.github.io/asset/images/geminidrake_deviantart_spritesheet_freeschooluniforms.png').then(() => {
+      loaderRef.current.load('https://dm.mux8.com/asset/images/geminidrake_deviantart_spritesheet_freeschooluniforms.png').then(() => {
         loadedRef.current = true;
       }).catch(console.error);
     } else {
