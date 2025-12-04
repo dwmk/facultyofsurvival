@@ -23,9 +23,9 @@ interface GameCanvasProps {
 
 const VIEWPORT_WIDTH = 800;
 const VIEWPORT_HEIGHT = 600;
-const SPRITE_URL = 'https://dm.mux8.com/asset/images/geminidrake_deviantart_spritesheet_freeschooluniforms.png';
-const ALBEDO_SPRITE_URL = 'https://dm.mux8.com/asset/images/geminidrake_deviantart_spritesheet_albedo.png';
-const SUPPORTS_SPRITE_URL = 'https://dm.mux8.com/asset/images/geminidrake_deviantart_spritesheet_supports.png';
+const SPRITE_URL = 'https://dewanmukto.com/asset/images/geminidrake_deviantart_spritesheet_freeschooluniforms.png';
+const ALBEDO_SPRITE_URL = 'https://dewanmukto.com/asset/images/geminidrake_deviantart_spritesheet_albedo.png';
+const SUPPORTS_SPRITE_URL = 'https://dewanmukto.com/asset/images/geminidrake_deviantart_spritesheet_supports.png';
 
 export const GameCanvas = ({ gameMap, player, students, coins, npcs, tileSize, mapSize, playerUpgrades, chatGPTTrackerCooldown, chatGPTStartTime, chatGPTActiveUntil, lastDamageTimeForVignette, activeMarquee, customPlayerSpritesheets, nearNPC }: GameCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -406,7 +406,7 @@ const drawChatBubble = (
       ctx.strokeRect(padding, padding, boxSize, boxSize);
 
       const img = new Image();
-      img.src = 'https://dm.mux8.com/asset/images/gpticon.png';
+      img.src = 'https://dewanmukto.com/asset/images/gpticon.png';
       ctx.drawImage(img, padding * 2, padding * 2, iconSize, iconSize);
 
       ctx.fillStyle = 'white';
