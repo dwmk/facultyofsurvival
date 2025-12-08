@@ -50,7 +50,7 @@ const SHOP_ITEMS: ShopItem[] = [
     name: 'Excitement',
     description: 'Increases your walking speed by 0.5',
     cost: 500,
-    icon: 'https://dewanmukto.com/asset/images/money.jpg',
+    icon: 'https://dewanmukto.vercel.app/asset/images/money.jpg',
     type: 'upgrade',
   },
   {
@@ -58,7 +58,7 @@ const SHOP_ITEMS: ShopItem[] = [
     name: 'Assignments',
     description: 'Decreases all student speed by 0.5',
     cost: 300,
-    icon: 'https://dewanmukto.com/asset/images/book.png',
+    icon: 'https://dewanmukto.vercel.app/asset/images/book.png',
     type: 'upgrade',
   },
   {
@@ -66,18 +66,18 @@ const SHOP_ITEMS: ShopItem[] = [
     name: 'ChatGPT Tracker',
     description: 'Push students away with Q key',
     cost: 100,
-    icon: 'https://dewanmukto.com/asset/images/gpticon.png',
+    icon: 'https://dewanmukto.vercel.app/asset/images/gpticon.png',
     type: 'tool',
   },
 ];
 
 export const CHARACTERS = {
   default: { name: 'Mr. Tom Ku', pronoun: 'Sir', spritesheet: 'default' as const, unlock_attribute: 'none' as const, unlock_amount: null as null },
-  famille: { name: 'Ms. Pookie', pronoun: 'Ma\'am', spritesheet: 'https://dewanmukto.com/asset/images/geminidrake_deviantart_spritesheet_famille.png' as const, unlock_attribute: 'totalGameovers' as const, unlock_amount: 10 },
-  tsukasa: { name: 'Club Pres.', pronoun: 'Bro', spritesheet: 'https://dewanmukto.com/asset/images/geminidrake_deviantart_spritesheet_tsukasa.png' as const, unlock_attribute: 'totalEgo' as const, unlock_amount: 1000 },
-  angrynerd: { name: 'Class Rep.', pronoun: 'CR', spritesheet: 'https://dewanmukto.com/asset/images/geminidrake_deviantart_spritesheet_angrynerd.png' as const, unlock_attribute: 'totalSurvival' as const, unlock_amount: 1000 },
-  greed: { name: 'Professor', pronoun: 'Sir', spritesheet: 'https://dewanmukto.com/asset/images/geminidrake_deviantart_spritesheet_greed.png' as const, unlock_attribute: 'totalEgo' as const, unlock_amount: 5000 },
-  darion: { name: 'Headmaster', pronoun: 'Sir', spritesheet: 'https://dewanmukto.com/asset/images/geminidrake_deviantart_spritesheet_darion.png' as const, unlock_attribute: 'totalPlaytime' as const, unlock_amount: 1 * 3600 },
+  famille: { name: 'Ms. Pookie', pronoun: 'Ma\'am', spritesheet: 'https://dewanmukto.vercel.app/asset/images/geminidrake_deviantart_spritesheet_famille.png' as const, unlock_attribute: 'totalGameovers' as const, unlock_amount: 10 },
+  tsukasa: { name: 'Club Pres.', pronoun: 'Bro', spritesheet: 'https://dewanmukto.vercel.app/asset/images/geminidrake_deviantart_spritesheet_tsukasa.png' as const, unlock_attribute: 'totalEgo' as const, unlock_amount: 1000 },
+  angrynerd: { name: 'Class Rep.', pronoun: 'CR', spritesheet: 'https://dewanmukto.vercel.app/asset/images/geminidrake_deviantart_spritesheet_angrynerd.png' as const, unlock_attribute: 'totalSurvival' as const, unlock_amount: 1000 },
+  greed: { name: 'Professor', pronoun: 'Sir', spritesheet: 'https://dewanmukto.vercel.app/asset/images/geminidrake_deviantart_spritesheet_greed.png' as const, unlock_attribute: 'totalEgo' as const, unlock_amount: 5000 },
+  darion: { name: 'Headmaster', pronoun: 'Sir', spritesheet: 'https://dewanmukto.vercel.app/asset/images/geminidrake_deviantart_spritesheet_darion.png' as const, unlock_attribute: 'totalPlaytime' as const, unlock_amount: 1 * 3600 },
 } as const;
 
 type UnlockAttribute = 'none' | 'totalEgo' | 'totalPlaytime' | 'totalSurvival' | 'totalGameovers';
